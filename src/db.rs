@@ -1,97 +1,87 @@
+use std::marker::PhantomData;
+
 use diesel::result::Error::DeserializationError;
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl,
     SqliteConnection,
 };
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use crate::{models, schema};
 
-pub struct ConfigOptionDef<T: serde::Serialize + serde::de::DeserializeOwned> {
-    pub table_name: &'static str,
-    pub phantom: std::marker::PhantomData<T>,
+/// A definition for a typed value stored in the database table `options`.
+pub struct ConfigOptionDef<T: Serialize + DeserializeOwned> {
+    key_name: &'static str,
+    phantom: PhantomData<T>,
 }
 
+/// A helper macro for defining a `ConfigOptionDef` constant.
 macro_rules! config_option_def {
     ($name:ident, $type:ty) => {
         #[allow(non_upper_case_globals)]
         pub const $name: crate::db::ConfigOptionDef<$type> =
-            crate::db::ConfigOptionDef {
-                table_name: stringify!($name),
-                phantom: std::marker::PhantomData,
-            };
+            crate::db::ConfigOptionDef::new(stringify!($name));
     };
 }
 pub(crate) use config_option_def;
 
-impl<T> ConfigOptionDef<T>
-where
-    T: serde::Serialize + serde::de::DeserializeOwned,
-{
+impl<T: Serialize + DeserializeOwned> ConfigOptionDef<T> {
+    pub const fn new(key_name: &'static str) -> Self {
+        Self { key_name, phantom: PhantomData }
+    }
+
+    /// Get the value of this option from the database.
+    /// Returns `Ok(None)` if the option is not set or deserialization fails.
     pub fn get(
         &self,
         conn: &mut SqliteConnection,
     ) -> diesel::QueryResult<Option<T>> {
-        get_option(conn, self.table_name)
+        let value: Option<String> = schema::options::table
+            .filter(schema::options::name.eq(self.key_name))
+            .first::<models::ConfigOption>(conn)
+            .optional()?
+            .map(|option| option.value);
+        match serde_json::from_str::<T>(&value.unwrap_or_default()) {
+            Ok(value) => Ok(Some(value)),
+            Err(e) => {
+                log::error!(
+                    "Error deserializing option {}: {}",
+                    self.key_name,
+                    e
+                );
+                Ok(None)
+            }
+        }
     }
 
+    /// Set the value of this option in the database.
     pub fn set(
         &self,
         conn: &mut SqliteConnection,
         value: &T,
     ) -> diesel::QueryResult<()> {
-        set_option(conn, self.table_name, value)
+        let value = serde_json::to_string(value)
+            .map_err(|e| DeserializationError(Box::new(e)))?;
+        diesel::replace_into(schema::options::table)
+            .values(models::ConfigOption {
+                name: self.key_name.to_string(),
+                value,
+            })
+            .execute(conn)
+            .map(|_| ())
     }
 
+    /// Unset the value of this option in the database.
     pub fn unset(
         &self,
         conn: &mut SqliteConnection,
     ) -> diesel::QueryResult<()> {
-        unset_option(conn, self.table_name)
-    }
-}
-
-fn get_option<T: serde::de::DeserializeOwned>(
-    conn: &mut SqliteConnection,
-    name: &str,
-) -> diesel::QueryResult<Option<T>> {
-    let value = schema::options::table
-        .filter(schema::options::name.eq(name))
-        .first::<models::ConfigOption>(conn)
-        .optional()
-        .map(|option| option.map(|option| option.value));
-    match value {
-        Ok(Some(value)) => match serde_json::from_str(&value) {
-            Ok(value) => Ok(Some(value)),
-            Err(e) => {
-                log::error!("Error deserializing option {}: {}", name, e);
-                Ok(None)
-            }
-        },
-        Ok(None) => Ok(None),
-        Err(e) => Err(e),
-    }
-}
-
-fn set_option<T: serde::Serialize>(
-    conn: &mut SqliteConnection,
-    name: &str,
-    value: &T,
-) -> diesel::QueryResult<()> {
-    let value = serde_json::to_string(value)
-        .map_err(|e| DeserializationError(Box::new(e)))?;
-    diesel::replace_into(schema::options::table)
-        .values(models::ConfigOption { name: name.to_string(), value })
+        diesel::delete(
+            schema::options::table
+                .filter(schema::options::name.eq(self.key_name)),
+        )
         .execute(conn)
         .map(|_| ())
-}
-
-fn unset_option(
-    conn: &mut SqliteConnection,
-    name: &str,
-) -> diesel::QueryResult<()> {
-    diesel::delete(
-        schema::options::table.filter(schema::options::name.eq(name)),
-    )
-    .execute(conn)
-    .map(|_| ())
+    }
 }
