@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS residents;
+DROP TABLE IF EXISTS tg_users;
+DROP TABLE IF EXISTS tg_chats;
+DROP TABLE IF EXISTS forwards;
+DROP TABLE IF EXISTS options;
+DROP TABLE IF EXISTS user_macs;
+DROP TABLE IF EXISTS tracked_polls;
+DROP TABLE IF EXISTS borrowed_items;

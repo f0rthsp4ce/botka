@@ -1,0 +1,59 @@
+CREATE TABLE tg_users (
+  id BIGINT PRIMARY KEY NOT NULL,
+  username TEXT,
+  first_name TEXT NOT NULL,
+  last_name TEXT
+);
+
+CREATE TABLE tg_chats (
+  id BIGINT PRIMARY KEY NOT NULL,
+  kind TEXT NOT NULL,
+  username TEXT,
+  title TEXT
+);
+
+CREATE TABLE residents (
+  tg_id BIGINT PRIMARY KEY NOT NULL /* REFERENCES tg_users(id) */,
+  is_resident BOOLEAN NOT NULL DEFAULT FALSE,
+  is_bot_admin BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE user_macs (
+  tg_id BIGINT NOT NULL /* REFERENCES tg_users(id) */,
+  mac TEXT NOT NULL,
+  PRIMARY KEY (tg_id, mac)
+);
+
+CREATE TABLE forwards (
+  orig_chat_id BIGINT PRIMARY KEY NOT NULL REFERENCES tg_users(id),
+  orig_msg_id INTEGER NOT NULL,
+
+  backup_chat_id BIGINT NOT NULL,
+  backup_msg_id INTEGER NOT NULL,
+
+  backup_text TEXT NOT NULL
+);
+
+CREATE TABLE options (
+  name TEXT PRIMARY KEY NOT NULL,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE tracked_polls (
+  tg_poll_id TEXT NOT NULL,
+  creator_id BIGINT NOT NULL,
+  info_chat_id BIGINT NOT NULL,
+  info_message_id INTEGER NOT NULL,
+  voted_users TEXT NOT NULL,
+  PRIMARY KEY (tg_poll_id)
+);
+
+CREATE TABLE borrowed_items (
+  chat_id BIGINT NOT NULL,
+  thread_id INTEGER NOT NULL,
+  user_message_id INTEGER NOT NULL,
+  bot_message_id INTEGER NOT NULL,
+  user_id BIGINT NOT NULL,
+  items TEXT NOT NULL,
+  PRIMARY KEY (chat_id, user_message_id)
+);
