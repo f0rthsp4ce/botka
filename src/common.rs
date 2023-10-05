@@ -32,10 +32,6 @@ pub enum State {
 
 pub type MyDialogue = Dialogue<State, InMemStorage<State>>;
 
-pub type HandlerError = Box<dyn std::error::Error + Send + Sync>;
-
-pub type HandlerResult = Result<(), HandlerError>;
-
 /// Rules describing where and who can execute a command.
 #[derive(Eq, PartialEq, Debug)]
 pub struct CommandRules {

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Result;
 use diesel::prelude::*;
 use macro_rules_attribute::derive;
 use teloxide::macros::BotCommands;
@@ -8,8 +9,8 @@ use teloxide::types::MessageId;
 use teloxide::RequestError;
 
 use crate::common::{
-    filter_command, format_users, BotEnv, CommandHandler, HandlerResult,
-    MyDialogue, Role, State,
+    filter_command, format_users, BotEnv, CommandHandler, MyDialogue, Role,
+    State,
 };
 use crate::utils::BotExt;
 use crate::HasCommandRules;
@@ -34,7 +35,7 @@ enum DebateCommand {
     DebateEnd,
 }
 
-pub fn command_handler() -> CommandHandler<HandlerResult> {
+pub fn command_handler() -> CommandHandler<Result<()>> {
     filter_command::<DebateCommand, _>().endpoint(handle_debate_command)
 }
 
@@ -44,7 +45,7 @@ async fn handle_debate_command<'a>(
     env: Arc<BotEnv>,
     msg: Message,
     command: DebateCommand,
-) -> HandlerResult {
+) -> Result<()> {
     dialogue.update(State::Start).await?;
     match command {
         DebateCommand::DebateSend => {
@@ -66,7 +67,7 @@ async fn cmd_debate_start<'a>(
     env: Arc<BotEnv>,
     msg: Message,
     description: String,
-) -> HandlerResult {
+) -> Result<()> {
     let was_started = env.conn().transaction(|conn| {
         if crate::models::debate.get(conn)?.is_some() {
             Ok(true)
@@ -99,7 +100,7 @@ async fn cmd_debate_status<'a>(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-) -> HandlerResult {
+) -> Result<()> {
     let result = env.conn().transaction(|conn| {
         if let Some(debate) = crate::models::debate.get(conn)? {
             let messages = crate::schema::residents::table
@@ -173,7 +174,7 @@ async fn cmd_debate_end<'a>(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-) -> HandlerResult {
+) -> Result<()> {
     let result = env.conn().transaction(|conn| {
         if crate::models::debate.get(conn)?.is_some() {
             let messages = crate::schema::forwards::table
@@ -242,7 +243,7 @@ pub async fn debate_send<'a>(
     dialogue: MyDialogue,
     env: Arc<BotEnv>,
     msg: Message,
-) -> HandlerResult {
+) -> Result<()> {
     if msg.forward().is_some() {
         bot.reply_message(
             &msg,

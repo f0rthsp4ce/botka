@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
+use anyhow::Result;
 use argh::FromArgs;
 use diesel::prelude::*;
 use macro_rules_attribute::derive;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
 
-use crate::common::{filter_command, BotEnv, CommandHandler, HandlerResult};
+use crate::common::{filter_command, BotEnv, CommandHandler};
 use crate::utils::BotExt;
 use crate::HasCommandRules;
 
@@ -32,7 +33,7 @@ struct UserctlArgs {
     remove_mac: Vec<macaddr::MacAddr6>,
 }
 
-pub fn command_handler() -> CommandHandler<HandlerResult> {
+pub fn command_handler() -> CommandHandler<Result<()>> {
     filter_command::<UserctlCommand, _>().endpoint(cmd_userctl)
 }
 
@@ -41,7 +42,7 @@ async fn cmd_userctl(
     env: Arc<BotEnv>,
     msg: Message,
     cmd: UserctlCommand,
-) -> HandlerResult {
+) -> Result<()> {
     let args = match cmd {
         UserctlCommand::Userctl(args) => args,
     };

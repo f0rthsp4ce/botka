@@ -2,6 +2,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Result;
 use diesel::prelude::*;
 use macro_rules_attribute::derive;
 use teloxide::prelude::*;
@@ -9,7 +10,7 @@ use teloxide::utils::command::BotCommands;
 
 use crate::common::{
     filter_command, format_users, format_users2, BotEnv, CommandHandler,
-    HandlerResult, MyDialogue, State,
+    MyDialogue, State,
 };
 use crate::utils::BotExt;
 use crate::{models, schema, HasCommandRules};
@@ -30,7 +31,7 @@ enum Command {
     Status,
 }
 
-pub fn command_handler() -> CommandHandler<HandlerResult> {
+pub fn command_handler() -> CommandHandler<Result<()>> {
     filter_command::<Command, _>().endpoint(start)
 }
 
@@ -40,7 +41,7 @@ async fn start<'a>(
     env: Arc<BotEnv>,
     msg: Message,
     command: Command,
-) -> HandlerResult {
+) -> Result<()> {
     dialogue.update(State::Start).await?;
     match command {
         Command::Help => {
@@ -57,7 +58,7 @@ async fn cmd_list_residents<'a>(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-) -> HandlerResult {
+) -> Result<()> {
     let residents = schema::residents::table
         .filter(schema::residents::is_resident.eq(true))
         .left_join(
@@ -76,7 +77,7 @@ async fn cmd_list_residents<'a>(
     Ok(())
 }
 
-async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> HandlerResult {
+async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
     #[derive(serde::Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
     struct Lease {

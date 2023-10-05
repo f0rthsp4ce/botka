@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use anyhow::Result;
 use common::{MyDialogue, State};
 use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
@@ -125,7 +126,7 @@ async fn reset_dialogue_on_command(msg: Message, dialogue: MyDialogue) {
 async fn handle_callback_query(
     bot: Bot,
     callback_query: CallbackQuery,
-) -> common::HandlerResult {
+) -> Result<()> {
     log::info!("Chosen inline result: {:?}", callback_query);
     bot.answer_callback_query(&callback_query.id)
         .text("You chose this inline result")

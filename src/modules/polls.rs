@@ -1,6 +1,7 @@
 use std::fmt::Write;
 use std::sync::Arc;
 
+use anyhow::Result;
 use diesel::prelude::*;
 use teloxide::dispatching::UpdateFilterExt;
 use teloxide::prelude::*;
@@ -9,17 +10,15 @@ use teloxide::types::{
     MessageKind, User,
 };
 
-use crate::common::{
-    format_users2, user_role, BotEnv, CommandHandler, HandlerResult, Role,
-};
+use crate::common::{format_users2, user_role, BotEnv, CommandHandler, Role};
 use crate::utils::{BotExt, ResultExt, Sqlizer};
 use crate::{models, schema};
 
-pub fn message_handler() -> CommandHandler<HandlerResult> {
+pub fn message_handler() -> CommandHandler<Result<()>> {
     dptree::filter_map(filter_polls).endpoint(handle_message)
 }
 
-pub fn poll_answer_handler() -> CommandHandler<HandlerResult> {
+pub fn poll_answer_handler() -> CommandHandler<Result<()>> {
     Update::filter_poll_answer().endpoint(handle_poll_answer)
 }
 
@@ -69,7 +68,7 @@ async fn handle_message(
     msg: Message,
     env: Arc<BotEnv>,
     kind: PollKind,
-) -> HandlerResult {
+) -> Result<()> {
     match kind {
         PollKind::New(poll) => intercept_new_poll(bot, msg, poll, env).await,
         PollKind::Forward(poll_id) => {
@@ -83,7 +82,7 @@ async fn intercept_new_poll(
     msg: Message,
     poll: Poll,
     env: Arc<BotEnv>,
-) -> HandlerResult {
+) -> Result<()> {
     let mut new_poll = bot
         .send_poll(
             msg.chat.id,
@@ -143,7 +142,7 @@ async fn hande_poll_forward(
     msg: Message,
     poll_id: &str,
     env: Arc<BotEnv>,
-) -> HandlerResult {
+) -> Result<()> {
     let poll_results = env.conn().transaction(|conn| {
         let db_poll = match db_find_poll(conn, poll_id)? {
             Some(db_poll) => db_poll,
@@ -180,7 +179,7 @@ async fn handle_poll_answer(
     bot: Bot,
     poll_answer: PollAnswer,
     env: Arc<BotEnv>,
-) -> HandlerResult {
+) -> Result<()> {
     let update = env.conn().transaction(|conn| {
         let db_poll = match db_find_poll(conn, &poll_answer.poll_id)? {
             Some(db_poll) => db_poll,

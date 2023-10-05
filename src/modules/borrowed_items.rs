@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Result;
 use async_openai::types::{
     ChatCompletionRequestMessageArgs, CreateChatCompletionRequestArgs,
 };
@@ -14,15 +15,15 @@ use teloxide::types::{
 use teloxide::utils::html;
 use unwrap_or::unwrap_some_or;
 
-use crate::common::{BotEnv, CommandHandler, HandlerError, HandlerResult};
+use crate::common::{BotEnv, CommandHandler};
 use crate::utils::Sqlizer;
 use crate::{models, schema};
 
-pub fn command_handler() -> CommandHandler<HandlerResult> {
+pub fn command_handler() -> CommandHandler<Result<()>> {
     dptree::filter(filter_messages_in_topic).endpoint(handle_message)
 }
 
-pub fn callback_handler() -> CommandHandler<HandlerResult> {
+pub fn callback_handler() -> CommandHandler<Result<()>> {
     dptree::filter_map(filter_callbacks).endpoint(handle_callback)
 }
 
@@ -38,7 +39,7 @@ async fn handle_message(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-) -> HandlerResult {
+) -> Result<()> {
     let user = unwrap_some_or!(msg.from(), return Ok(()));
     let text = unwrap_some_or!(textify_message(&msg), return Ok(()));
     let item_names = match classify(env.clone(), &text).await? {
@@ -123,7 +124,7 @@ async fn handle_callback(
     env: Arc<BotEnv>,
     cd: CallbackData,
     callback: CallbackQuery,
-) -> HandlerResult {
+) -> Result<()> {
     let resp = env.transaction(|conn| {
         let mut bi: models::BorrowedItems = schema::borrowed_items::table
             .filter(schema::borrowed_items::chat_id.eq(cd.chat_id.0))
@@ -218,7 +219,7 @@ enum ClassificationResult {
 async fn classify(
     env: Arc<BotEnv>,
     text: &str,
-) -> Result<ClassificationResult, HandlerError> {
+) -> Result<ClassificationResult> {
     if env.config.services.openai.disable {
         classify_dumb(text).await
     } else {
@@ -226,9 +227,7 @@ async fn classify(
     }
 }
 
-async fn classify_dumb(
-    text: &str,
-) -> Result<ClassificationResult, HandlerError> {
+async fn classify_dumb(text: &str) -> Result<ClassificationResult> {
     let items = match text.strip_prefix("took") {
         Some(text) => {
             text.trim().split(' ').map(|s| s.to_string()).collect::<Vec<_>>()
@@ -244,7 +243,7 @@ async fn classify_dumb(
 async fn classify_openai(
     env: Arc<BotEnv>,
     text: &str,
-) -> Result<ClassificationResult, HandlerError> {
+) -> Result<ClassificationResult> {
     let request = CreateChatCompletionRequestArgs::default()
         .max_tokens(256u16)
         .model("gpt-4")
@@ -263,11 +262,11 @@ async fn classify_openai(
     let response_text = response
         .choices
         .first()
-        .ok_or("No response")?
+        .ok_or_else(|| anyhow::anyhow!("Empty list of choices"))?
         .message
         .content
         .as_ref()
-        .ok_or("No content")?
+        .ok_or(anyhow::anyhow!("No content in response"))?
         .as_str();
     if response_text == "\"R\"" {
         return Ok(ClassificationResult::Returned);

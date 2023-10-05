@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Result;
 use hyper::server::conn::AddrIncoming;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server, Uri};
@@ -27,9 +28,7 @@ struct GetUpdatesResponse {
 /// Start a proxy server that forwards requests to the Telegram API and logs
 /// getUpdates responses to a file.
 /// Returns the URL of the proxy server.
-pub async fn start(
-    log_file: &str,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn start(log_file: &str) -> Result<String> {
     // Make client from teloxide::net::default_reqwest_settings, plus 3 seconds.
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5 + 3))
@@ -68,7 +67,7 @@ pub async fn start(
 async fn handle_request(
     req: Request<Body>,
     proxy: Arc<Proxy>,
-) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Response<Body>> {
     let (mut parts, body) = req.into_parts();
     parts.uri = Uri::builder()
         .scheme("https")
