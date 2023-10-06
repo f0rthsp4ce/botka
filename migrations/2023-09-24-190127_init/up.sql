@@ -12,6 +12,14 @@ CREATE TABLE tg_chats (
   title TEXT
 );
 
+CREATE TABLE tg_users_in_chats (
+  chat_id BIGINT NOT NULL /* REFERENCES tg_chats(id) */,
+  user_id BIGINT NOT NULL /* REFERENCES tg_users(id) */,
+  chat_member TEXT, -- JSON
+  seen BOOLEAN NOT NULL,
+  PRIMARY KEY (chat_id, user_id)
+);
+
 CREATE TABLE residents (
   tg_id BIGINT PRIMARY KEY NOT NULL /* REFERENCES tg_users(id) */,
   is_resident BOOLEAN NOT NULL DEFAULT FALSE,

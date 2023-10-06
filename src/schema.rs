@@ -55,6 +55,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    tg_users_in_chats (chat_id, user_id) {
+        chat_id -> BigInt,
+        user_id -> BigInt,
+        chat_member -> Nullable<Text>,
+        seen -> Bool,
+    }
+}
+
+diesel::table! {
     tracked_polls (tg_poll_id) {
         tg_poll_id -> Text,
         creator_id -> BigInt,
@@ -80,6 +89,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     residents,
     tg_chats,
     tg_users,
+    tg_users_in_chats,
     tracked_polls,
     user_macs,
 );

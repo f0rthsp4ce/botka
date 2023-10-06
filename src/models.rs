@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use teloxide::types::ChatId;
+use teloxide::types::{ChatId, ChatMember};
 
 use crate::db::{config_option_def, DbChatId, DbMessageId, DbUserId};
 use crate::utils::Sqlizer;
@@ -34,6 +34,15 @@ pub struct NewTgChat<'a> {
     pub kind: &'a str,
     pub username: Option<&'a str>,
     pub title: Option<&'a str>,
+}
+
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = crate::schema::tg_users_in_chats)]
+pub struct NewTgUserInChat {
+    pub chat_id: DbChatId,
+    pub user_id: DbUserId,
+    pub chat_member: Option<Sqlizer<ChatMember>>,
+    pub seen: bool,
 }
 
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]

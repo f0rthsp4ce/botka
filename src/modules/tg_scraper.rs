@@ -1,31 +1,70 @@
 use std::sync::Arc;
 
-use diesel::RunQueryDsl;
+use diesel::{ExpressionMethods, RunQueryDsl, SqliteConnection};
 use teloxide::types::{
-    Chat, ChatKind, ForwardedFrom, Message, MessageEntity, MessageEntityKind,
-    PublicChatKind, Update, UpdateKind, User,
+    Chat, ChatKind, ChatMemberUpdated, ForwardedFrom, Message, MessageEntity,
+    MessageEntityKind, PublicChatKind, Update, UpdateKind, User,
 };
 
 use crate::common::BotEnv;
+use crate::utils::Sqlizer;
 use crate::{models, schema};
 
 /// Extract all users' info from a message.
 struct ScrapedInfo<'a> {
     pub users: Vec<models::NewTgUser<'a>>,
     pub chats: Vec<models::NewTgChat<'a>>,
+    pub user_in_chat: Option<models::NewTgUserInChat>,
 }
 
 pub fn scrape(env: Arc<BotEnv>, upd: Update) {
+    env.transaction(|conn| {
+        scrape_raw(conn, upd)?;
+        Ok(())
+    })
+    .unwrap()
+}
+
+pub fn scrape_raw(
+    conn: &mut SqliteConnection,
+    upd: Update,
+) -> Result<(), diesel::result::Error> {
     let scrape = ScrapedInfo::scrape(&upd);
     diesel::replace_into(schema::tg_users::table)
         .values(scrape.users)
-        .execute(&mut *env.conn())
-        .unwrap();
+        .execute(conn)?;
+    diesel::replace_into(schema::tg_chats::table)
+        .values(scrape.chats)
+        .execute(conn)?;
+    if let Some(user_in_chat) = scrape.user_in_chat {
+        if user_in_chat.chat_member.is_some() {
+            // Update from ChatMemberUpdated
+            diesel::replace_into(schema::tg_users_in_chats::table)
+                .values(&user_in_chat)
+                .execute(conn)?;
+        } else {
+            // Update from Message seen
+            diesel::insert_into(schema::tg_users_in_chats::table)
+                .values(&user_in_chat)
+                .on_conflict((
+                    schema::tg_users_in_chats::chat_id,
+                    schema::tg_users_in_chats::user_id,
+                ))
+                .do_update()
+                .set(schema::tg_users_in_chats::seen.eq(true))
+                .execute(conn)?;
+        }
+    }
+    Ok(())
 }
 
 impl<'a> ScrapedInfo<'a> {
     pub fn scrape(update: &'a Update) -> Self {
-        let mut info = ScrapedInfo { users: Vec::new(), chats: Vec::new() };
+        let mut info = ScrapedInfo {
+            users: Vec::new(),
+            chats: Vec::new(),
+            user_in_chat: None,
+        };
         info.scrape_update(update);
         info.users.sort_by_key(|u| u.id);
         info.users.dedup_by_key(|u| u.id);
@@ -55,11 +94,7 @@ impl<'a> ScrapedInfo<'a> {
             }
             UpdateKind::PollAnswer(a) => self.scrape_user(&a.user),
             UpdateKind::MyChatMember(m) | UpdateKind::ChatMember(m) => {
-                self.scrape_user(&m.from);
-                self.scrape_chat(&m.chat);
-                // TODO: scrape chat member for chat status?
-                self.scrape_user(&m.old_chat_member.user);
-                self.scrape_user(&m.new_chat_member.user);
+                self.scrape_chat_member(m);
             }
             UpdateKind::ChatJoinRequest(r) => {
                 self.scrape_user(&r.from);
@@ -70,7 +105,15 @@ impl<'a> ScrapedInfo<'a> {
     }
 
     fn scrape_message(&mut self, msg: &'a Message) {
-        msg.from().map(|u| self.scrape_user(u));
+        if let Some(from) = msg.from() {
+            self.scrape_user(from);
+            self.user_in_chat = Some(models::NewTgUserInChat {
+                chat_id: msg.chat.id.into(),
+                user_id: from.id.into(),
+                chat_member: None,
+                seen: true,
+            });
+        }
         match msg.forward_from() {
             Some(ForwardedFrom::User(u)) => self.scrape_user(u),
             Some(ForwardedFrom::Chat(c)) => self.scrape_chat(c),
@@ -106,6 +149,22 @@ impl<'a> ScrapedInfo<'a> {
                 title: chat.title(),
             });
         }
+    }
+
+    fn scrape_chat_member(&mut self, cmu: &'a ChatMemberUpdated) {
+        self.scrape_user(&cmu.from);
+        self.scrape_chat(&cmu.chat);
+        self.scrape_user(&cmu.old_chat_member.user);
+        self.scrape_user(&cmu.new_chat_member.user);
+        self.user_in_chat = Some(models::NewTgUserInChat {
+            chat_id: cmu.chat.id.into(),
+            user_id: cmu.from.id.into(),
+            chat_member: Some(
+                Sqlizer::new(cmu.new_chat_member.clone())
+                    .expect("Sqlizer ChatMember failed"),
+            ),
+            seen: cmu.new_chat_member.is_present(),
+        });
     }
 }
 
