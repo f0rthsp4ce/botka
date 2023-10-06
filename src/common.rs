@@ -8,11 +8,12 @@ use diesel::{
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::DpHandlerDescription;
 use teloxide::prelude::Dialogue;
-use teloxide::types::{Me, Message, User};
+use teloxide::types::{Me, Message, User, UserId};
 use teloxide::utils::command::BotCommands;
 use teloxide::utils::html::escape;
 use teloxide::Bot;
 
+use crate::db::DbUserId;
 use crate::models::Resident;
 use crate::utils::BotExt;
 
@@ -166,7 +167,7 @@ pub fn format_users<'a>(
 
 pub fn format_users2<'a>(
     out: &mut String,
-    iter: impl Iterator<Item = (i64, &'a Option<crate::models::TgUser>)>,
+    iter: impl Iterator<Item = (DbUserId, &'a Option<crate::models::TgUser>)>,
 ) {
     let mut first = true;
     for (tg_id, user) in iter {
@@ -182,10 +183,13 @@ pub fn format_users2<'a>(
     }
 }
 
-fn format_user(tg_id: i64, user: &Option<crate::models::TgUser>) -> String {
+fn format_user(
+    tg_id: DbUserId,
+    user: &Option<crate::models::TgUser>,
+) -> String {
     match user {
         None => {
-            format!("id={} (unknown)", tg_id)
+            format!("id={} (unknown)", UserId::from(tg_id).0)
         }
         Some(crate::models::TgUser { username: Some(username), .. }) => {
             format!("@{}", username)
@@ -196,12 +200,12 @@ fn format_user(tg_id: i64, user: &Option<crate::models::TgUser>) -> String {
 
 fn format_user2(
     out: &mut String,
-    tg_id: i64,
+    tg_id: DbUserId,
     user: &Option<crate::models::TgUser>,
 ) {
     match user {
         None => {
-            write!(out, "id={} (unknown)", tg_id).unwrap();
+            write!(out, "id={} (unknown)", UserId::from(tg_id).0).unwrap();
         }
         Some(u) => {
             if let Some(username) = &u.username {
@@ -267,7 +271,7 @@ where
 
 pub fn user_role(conn: &mut SqliteConnection, user: &User) -> Role {
     let resident: Option<Resident> = crate::schema::residents::table
-        .filter(crate::schema::residents::tg_id.eq(user.id.0 as i64))
+        .filter(crate::schema::residents::tg_id.eq(DbUserId::from(user.id)))
         .first::<Resident>(conn)
         .optional()
         .ok()

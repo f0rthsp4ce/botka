@@ -6,11 +6,11 @@ use diesel::prelude::*;
 use teloxide::dispatching::UpdateFilterExt;
 use teloxide::prelude::*;
 use teloxide::types::{
-    Forward, ForwardedFrom, Me, MediaKind, MessageCommon, MessageId,
-    MessageKind, User,
+    Forward, ForwardedFrom, Me, MediaKind, MessageCommon, MessageKind, User,
 };
 
 use crate::common::{format_users2, user_role, BotEnv, CommandHandler, Role};
+use crate::db::DbUserId;
 use crate::utils::{BotExt, ResultExt, Sqlizer};
 use crate::{models, schema};
 
@@ -127,9 +127,9 @@ async fn intercept_new_poll(
     diesel::insert_into(schema::tracked_polls::table)
         .values(&models::TrackedPoll {
             tg_poll_id: poll_id,
-            creator_id: msg.from().unwrap().id.0 as i64,
-            info_chat_id: poll_info.chat.id.0,
-            info_message_id: poll_info.id.0,
+            creator_id: msg.from().unwrap().id.into(),
+            info_chat_id: poll_info.chat.id.into(),
+            info_message_id: poll_info.id.into(),
             voted_users: Sqlizer::new(Vec::new()).unwrap(),
         })
         .execute(&mut *env.conn())?;
@@ -188,9 +188,9 @@ async fn handle_poll_answer(
 
         let mut voted_users = (*db_poll.voted_users).clone();
         if poll_answer.option_ids.is_empty() {
-            voted_users.retain(|&u| u != poll_answer.user.id.0 as i64);
+            voted_users.retain(|&u| u != poll_answer.user.id.into());
         } else {
-            voted_users.push(poll_answer.user.id.0 as i64);
+            voted_users.push(poll_answer.user.id.into());
         }
         voted_users.sort();
         voted_users.dedup();
@@ -230,14 +230,10 @@ async fn handle_poll_answer(
         text.push_str(".\n");
     }
 
-    bot.edit_message_text(
-        ChatId(info_chat_id),
-        MessageId(info_message_id),
-        text,
-    )
-    .parse_mode(teloxide::types::ParseMode::Html)
-    .disable_web_page_preview(true)
-    .await?;
+    bot.edit_message_text(info_chat_id, info_message_id.into(), text)
+        .parse_mode(teloxide::types::ParseMode::Html)
+        .disable_web_page_preview(true)
+        .await?;
 
     Ok(())
 }
@@ -254,8 +250,8 @@ fn db_find_poll(
 
 fn db_find_non_voters(
     conn: &mut SqliteConnection,
-    voted_users: &[i64],
-) -> Result<Vec<(i64, Option<models::TgUser>)>, diesel::result::Error> {
+    voted_users: &[DbUserId],
+) -> Result<Vec<(DbUserId, Option<models::TgUser>)>, diesel::result::Error> {
     schema::residents::table
         .filter(schema::residents::tg_id.ne_all(voted_users))
         .left_join(

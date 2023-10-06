@@ -96,7 +96,7 @@ impl<'a> ScrapedInfo<'a> {
     fn scrape_chat(&mut self, chat: &'a Chat) {
         if let ChatKind::Public(chat_public) = &chat.kind {
             self.chats.push(models::NewTgChat {
-                id: chat.id.0,
+                id: chat.id.into(),
                 kind: match chat_public.kind {
                     PublicChatKind::Channel(_) => "channel",
                     PublicChatKind::Group(_) => "group",
@@ -112,7 +112,7 @@ impl<'a> ScrapedInfo<'a> {
 impl<'a> From<&'a User> for models::NewTgUser<'a> {
     fn from(user: &'a User) -> Self {
         models::NewTgUser {
-            id: user.id.0 as i64,
+            id: user.id.into(),
             username: user.username.as_deref(),
             first_name: &user.first_name,
             last_name: user.last_name.as_deref(),

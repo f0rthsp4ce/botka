@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use diesel::result::Error::DeserializationError;
@@ -5,8 +6,10 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl,
     SqliteConnection,
 };
+use diesel_derive_newtype::DieselNewType;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use teloxide::types::{ChatId, MessageId, Recipient, UserId};
 
 use crate::{models, schema};
 
@@ -83,5 +86,69 @@ impl<T: Serialize + DeserializeOwned> ConfigOptionDef<T> {
         )
         .execute(conn)
         .map(|_| ())
+    }
+}
+
+macro_rules! make_db_wrapper {
+    ($name:ident, $inner:ty) => {
+        #[derive(
+            Copy,
+            Clone,
+            Debug,
+            Eq,
+            PartialEq,
+            Ord,
+            PartialOrd,
+            Serialize,
+            Deserialize,
+            DieselNewType,
+        )]
+        pub struct $name($inner);
+    };
+}
+
+make_db_wrapper!(DbUserId, i64);
+make_db_wrapper!(DbChatId, i64);
+make_db_wrapper!(DbMessageId, i32);
+
+impl From<UserId> for DbUserId {
+    fn from(id: UserId) -> Self {
+        Self(id.0 as i64)
+    }
+}
+
+impl From<DbUserId> for UserId {
+    fn from(id: DbUserId) -> Self {
+        Self(id.0 as u64)
+    }
+}
+
+impl From<ChatId> for DbChatId {
+    fn from(id: ChatId) -> Self {
+        Self(id.0)
+    }
+}
+
+impl From<DbChatId> for ChatId {
+    fn from(id: DbChatId) -> Self {
+        Self(id.0)
+    }
+}
+
+impl From<DbChatId> for Recipient {
+    fn from(id: DbChatId) -> Self {
+        Self::Id(id.into())
+    }
+}
+
+impl From<MessageId> for DbMessageId {
+    fn from(id: MessageId) -> Self {
+        Self(id.0)
+    }
+}
+
+impl From<DbMessageId> for MessageId {
+    fn from(id: DbMessageId) -> Self {
+        Self(id.0)
     }
 }

@@ -8,6 +8,7 @@ use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
 
 use crate::common::{filter_command, BotEnv, CommandHandler};
+use crate::db::DbUserId;
 use crate::utils::BotExt;
 use crate::HasCommandRules;
 
@@ -55,7 +56,7 @@ async fn cmd_userctl(
         }
     };
 
-    let tg_id = msg.from().unwrap().id.0 as i64;
+    let tg_id = DbUserId::from(msg.from().unwrap().id);
 
     let updated_macs = env.conn().transaction(|conn| {
         diesel::delete(crate::schema::user_macs::table)

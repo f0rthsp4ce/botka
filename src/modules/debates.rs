@@ -5,7 +5,6 @@ use diesel::prelude::*;
 use macro_rules_attribute::derive;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
-use teloxide::types::MessageId;
 use teloxide::RequestError;
 
 use crate::common::{
@@ -194,8 +193,8 @@ async fn cmd_debate_end<'a>(
                 match bot
                     .forward_message(
                         msg.chat.id,
-                        ChatId(debate_msg.orig_chat_id),
-                        MessageId(debate_msg.orig_msg_id),
+                        debate_msg.orig_chat_id,
+                        debate_msg.orig_msg_id.into(),
                     )
                     .await
                 {
@@ -212,8 +211,8 @@ async fn cmd_debate_end<'a>(
                 match bot
                     .forward_message(
                         msg.chat.id,
-                        ChatId(debate_msg.backup_chat_id),
-                        MessageId(debate_msg.backup_msg_id),
+                        debate_msg.backup_chat_id,
+                        debate_msg.backup_msg_id.into(),
                     )
                     .await
                 {
@@ -268,11 +267,11 @@ pub async fn debate_send<'a>(
             .optional()?;
         diesel::replace_into(crate::schema::forwards::table)
             .values(crate::models::Forward {
-                orig_chat_id: msg.chat.id.0,
-                orig_msg_id: msg.id.0,
+                orig_chat_id: msg.chat.id.into(),
+                orig_msg_id: msg.id.into(),
 
-                backup_chat_id: msg_backup.chat.id.0,
-                backup_msg_id: msg_backup.id.0,
+                backup_chat_id: msg_backup.chat.id.into(),
+                backup_msg_id: msg_backup.id.into(),
 
                 // TODO: properly store text
                 backup_text: msg_backup.text().unwrap_or_default().to_string(),
@@ -284,8 +283,8 @@ pub async fn debate_send<'a>(
     if let Some(previous) = previous {
         if let Err(e) = bot
             .delete_message(
-                ChatId(previous.backup_chat_id),
-                MessageId(previous.backup_msg_id),
+                previous.backup_chat_id,
+                previous.backup_msg_id.into(),
             )
             .await
         {

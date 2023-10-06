@@ -72,11 +72,11 @@ async fn handle_message(
     env.transaction(|conn| {
         diesel::insert_into(schema::borrowed_items::table)
             .values(models::BorrowedItems {
-                chat_id: msg.chat.id.0,
+                chat_id: msg.chat.id.into(),
                 thread_id: msg.thread_id.unwrap(),
-                user_message_id: msg.id.0,
-                bot_message_id: bot_message.id.0,
-                user_id: msg.from().unwrap().id.0 as i64,
+                user_message_id: msg.id.into(),
+                bot_message_id: bot_message.id.into(),
+                user_id: msg.from().unwrap().id.into(),
                 items: Sqlizer::new(items).unwrap(),
             })
             .execute(conn)?;
@@ -134,7 +134,7 @@ async fn handle_callback(
             )
             .first(conn)?;
 
-        if callback.from.id != UserId(bi.user_id as u64) {
+        if callback.from.id != bi.user_id.into() {
             return Ok(CallbackResponse::NotYourMessage);
         }
 
@@ -180,8 +180,8 @@ async fn handle_callback(
             let all_returned = bi.items.iter().all(|i| i.returned.is_some());
             let mut edit = bot
                 .edit_message_text(
-                    ChatId(cd.chat_id.0),
-                    MessageId(bi.bot_message_id),
+                    cd.chat_id,
+                    bi.bot_message_id.into(),
                     make_text(&callback.from, &bi.items),
                 )
                 .parse_mode(ParseMode::Html);

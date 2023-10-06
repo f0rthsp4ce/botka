@@ -4,7 +4,7 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use teloxide::types::ChatId;
 
-use crate::db::config_option_def;
+use crate::db::{config_option_def, DbChatId, DbMessageId, DbUserId};
 use crate::utils::Sqlizer;
 
 // Database models
@@ -12,7 +12,7 @@ use crate::utils::Sqlizer;
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::tg_users)]
 pub struct TgUser {
-    pub id: i64,
+    pub id: DbUserId,
     pub username: Option<String>,
     pub first_name: String,
     pub last_name: Option<String>,
@@ -21,7 +21,7 @@ pub struct TgUser {
 #[derive(Insertable)]
 #[diesel(table_name = crate::schema::tg_users)]
 pub struct NewTgUser<'a> {
-    pub id: i64,
+    pub id: DbUserId,
     pub username: Option<&'a str>,
     pub first_name: &'a str,
     pub last_name: Option<&'a str>,
@@ -30,7 +30,7 @@ pub struct NewTgUser<'a> {
 #[derive(Insertable)]
 #[diesel(table_name = crate::schema::tg_chats)]
 pub struct NewTgChat<'a> {
-    pub id: i64,
+    pub id: DbChatId,
     pub kind: &'a str,
     pub username: Option<&'a str>,
     pub title: Option<&'a str>,
@@ -39,7 +39,7 @@ pub struct NewTgChat<'a> {
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::residents)]
 pub struct Resident {
-    pub tg_id: i64,
+    pub tg_id: DbUserId,
     pub is_resident: bool,
     pub is_bot_admin: bool,
 }
@@ -47,18 +47,18 @@ pub struct Resident {
 #[derive(Insertable, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::user_macs)]
 pub struct UserMac {
-    pub tg_id: i64,
+    pub tg_id: DbUserId,
     pub mac: Sqlizer<macaddr::MacAddr6>,
 }
 
 #[derive(Insertable, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::forwards)]
 pub struct Forward {
-    pub orig_chat_id: i64,
-    pub orig_msg_id: i32,
+    pub orig_chat_id: DbChatId,
+    pub orig_msg_id: DbMessageId,
 
-    pub backup_chat_id: i64,
-    pub backup_msg_id: i32,
+    pub backup_chat_id: DbChatId,
+    pub backup_msg_id: DbMessageId,
 
     pub backup_text: String,
 }
@@ -67,10 +67,10 @@ pub struct Forward {
 #[diesel(table_name = crate::schema::tracked_polls)]
 pub struct TrackedPoll {
     pub tg_poll_id: String,
-    pub creator_id: i64,
-    pub info_chat_id: i64,
-    pub info_message_id: i32,
-    pub voted_users: Sqlizer<Vec<i64>>,
+    pub creator_id: DbUserId,
+    pub info_chat_id: DbChatId,
+    pub info_message_id: DbMessageId,
+    pub voted_users: Sqlizer<Vec<DbUserId>>,
 }
 
 #[derive(Insertable, Queryable, Selectable)]
@@ -83,11 +83,11 @@ pub struct ConfigOption {
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::borrowed_items)]
 pub struct BorrowedItems {
-    pub chat_id: i64,
+    pub chat_id: DbChatId,
     pub thread_id: i32,
-    pub user_message_id: i32,
-    pub bot_message_id: i32,
-    pub user_id: i64,
+    pub user_message_id: DbMessageId,
+    pub bot_message_id: DbMessageId,
+    pub user_id: DbUserId,
     pub items: Sqlizer<Vec<BorrowedItem>>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -120,7 +120,7 @@ pub struct Config {
 pub struct TelegramConfig {
     pub token: String,
     pub forward_channel: ChatId,
-    pub residential_chats: Vec<i64>,
+    pub residential_chats: Vec<ChatId>,
     pub borrowed_items_threads: Vec<TelegramConfigThread>,
     pub chats: TelegramConfigChats,
 }

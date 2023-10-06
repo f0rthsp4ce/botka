@@ -12,6 +12,7 @@ use crate::common::{
     filter_command, format_users, format_users2, BotEnv, CommandHandler,
     MyDialogue, State,
 };
+use crate::db::DbUserId;
 use crate::utils::BotExt;
 use crate::{models, schema, HasCommandRules};
 
@@ -116,7 +117,7 @@ async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
                 .filter(|l| l.last_seen < Duration::from_secs(11 * 60))
                 .map(|l| l.mac_address)
                 .collect::<Vec<_>>();
-            let data: Vec<(i64, Option<models::TgUser>)> =
+            let data: Vec<(DbUserId, Option<models::TgUser>)> =
                 schema::user_macs::table
                     .left_join(
                         schema::tg_users::table
