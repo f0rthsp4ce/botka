@@ -66,7 +66,6 @@ pub struct BotEnv {
     pub conn: Mutex<SqliteConnection>,
     pub config: crate::models::Config,
     pub reqwest_client: reqwest::Client,
-    #[cfg(feature = "async-openai")]
     pub openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
 }
 

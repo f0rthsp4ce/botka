@@ -40,7 +40,6 @@ async fn main() {
             .danger_accept_invalid_certs(true)
             .build()
             .expect("Failed to build reqwest client"),
-        #[cfg(feature = "async-openai")]
         openai_client: async_openai::Client::with_config(
             async_openai::config::OpenAIConfig::new()
                 .with_api_key(config.services.openai.api_key.clone()),
@@ -48,18 +47,12 @@ async fn main() {
         config,
     });
 
-    let mut bot = Bot::new(&bot_env.config.telegram.token);
-
-    #[cfg(feature = "hyper")]
-    {
-        let proxy_addr = tracing_proxy::start(bot_env.config.log_file.as_str())
-            .await
-            .expect("Failed to start proxy");
-        bot = bot.set_api_url(
-            reqwest::Url::parse(&proxy_addr)
-                .expect("Failed to parse proxy URL"),
-        );
-    }
+    let proxy_addr = tracing_proxy::start(bot_env.config.log_file.as_str())
+        .await
+        .expect("Failed to start proxy");
+    let bot = Bot::new(&bot_env.config.telegram.token).set_api_url(
+        reqwest::Url::parse(&proxy_addr).expect("Failed to parse proxy URL"),
+    );
 
     let mut dispatcher = Dispatcher::builder(
         bot.clone(),

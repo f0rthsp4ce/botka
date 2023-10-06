@@ -8,14 +8,14 @@ license = "Unlicense OR MIT"
 [dependencies]
 anyhow = { version = "1.0.75", features = ["backtrace"] }
 argh = "0.1.12"
-async-openai = { version = "0.14.3", optional = true }
+async-openai = "0.14.3"
 chrono = { version = "0.4.31", features = ["serde"] }
 diesel = { version = "2.1.1", features = ["sqlite", "serde_json"] }
 diesel-derive-newtype = "2.1.0"
 dptree = "0.3.0"
 futures = "0.3.28"
 gql_client = "1.0.7"
-hyper = { version = "0.14.27", features = ["server"], optional = true }
+hyper = { version = "0.14.27", features = ["server"] }
 itertools = "0.11.0"
 log = "0.4"
 macaddr = { version = "1.0.1", features = ["serde_std"] }
@@ -33,9 +33,6 @@ tokio = { version = "1.8", features = ["rt-multi-thread", "macros"] }
 tokio-util = "0.7.9"
 try_match = { version = "0.4.1", default-features = false }
 unwrap_or = "1.0.1"
-
-[features]
-default = ["async-openai", "hyper"]
 
 [dependencies.openssl-sys]
 version = "*"
