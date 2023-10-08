@@ -9,7 +9,9 @@ use teloxide::types::{
     Forward, ForwardedFrom, Me, MediaKind, MessageCommon, MessageKind, User,
 };
 
-use crate::common::{format_users2, user_role, BotEnv, CommandHandler, Role};
+use crate::common::{
+    format_user2, format_users2, user_role, BotEnv, CommandHandler, Role,
+};
 use crate::db::DbUserId;
 use crate::utils::{BotExt, ResultExt, Sqlizer};
 use crate::{models, schema};
@@ -119,15 +121,32 @@ async fn intercept_new_poll(
             .log_error("delete message");
         return Ok(());
     }
+
+    let non_voters = db_find_non_voters(&mut *env.conn(), &[]);
+
+    // TODO: cleanup this mess
+    let creator_id = msg.from().unwrap().id.into();
+    let creator_info = models::TgUser {
+        id: creator_id,
+        username: msg.from().unwrap().username.clone(),
+        first_name: msg.from().unwrap().first_name.clone(),
+        last_name: msg.from().unwrap().last_name.clone(),
+    };
+
     let poll_info = bot
-        .reply_message(&msg, "Poll info")
+        .reply_message(
+            &msg,
+            poll_text((creator_id, Some(creator_info)), &non_voters?, 0),
+        )
         .reply_to_message_id(new_poll.id)
+        .parse_mode(teloxide::types::ParseMode::Html)
+        .disable_web_page_preview(true)
         .await?;
 
     diesel::insert_into(schema::tracked_polls::table)
         .values(&models::TrackedPoll {
             tg_poll_id: poll_id,
-            creator_id: msg.from().unwrap().id.into(),
+            creator_id,
             info_chat_id: poll_info.chat.id.into(),
             info_message_id: poll_info.id.into(),
             voted_users: Sqlizer::new(Vec::new()).unwrap(),
@@ -144,7 +163,7 @@ async fn hande_poll_forward(
     env: Arc<BotEnv>,
 ) -> Result<()> {
     let poll_results = env.transaction(|conn| {
-        let db_poll = match db_find_poll(conn, poll_id)? {
+        let (db_poll, _) = match db_find_poll(conn, poll_id)? {
             Some(db_poll) => db_poll,
             None => return Ok(None),
         };
@@ -181,7 +200,8 @@ async fn handle_poll_answer(
     env: Arc<BotEnv>,
 ) -> Result<()> {
     let update = env.transaction(|conn| {
-        let db_poll = match db_find_poll(conn, &poll_answer.poll_id)? {
+        let (db_poll, creator) = match db_find_poll(conn, &poll_answer.poll_id)?
+        {
             Some(db_poll) => db_poll,
             None => return Ok(None),
         };
@@ -208,42 +228,73 @@ async fn handle_poll_answer(
         Ok(Some((
             db_poll.info_chat_id,
             db_poll.info_message_id,
+            (db_poll.creator_id, creator),
             non_voters,
             voted_users.len(),
         )))
     })?;
 
-    let (info_chat_id, info_message_id, non_voters, total_voters) = match update
-    {
-        Some(update) => update,
-        None => return Ok(()),
-    };
+    let (info_chat_id, info_message_id, creator, non_voters, total_voters) =
+        match update {
+            Some(update) => update,
+            None => return Ok(()),
+        };
 
+    bot.edit_message_text(
+        info_chat_id,
+        info_message_id.into(),
+        poll_text(creator, &non_voters, total_voters),
+    )
+    .parse_mode(teloxide::types::ParseMode::Html)
+    .disable_web_page_preview(true)
+    .await?;
+
+    Ok(())
+}
+
+fn poll_text(
+    creator: (DbUserId, Option<models::TgUser>),
+    non_voters: &[(DbUserId, Option<models::TgUser>)],
+    total_voters: usize,
+) -> String {
     let mut text = String::new();
 
+    text.push_str("Poll by ");
+    format_user2(&mut text, creator.0, &creator.1);
+    text.push_str(". ");
+
     if non_voters.is_empty() {
-        write!(text, "Everyone voted!").unwrap();
+        text.push_str("Everyone voted!");
     } else {
-        write!(text, "Voted {} users, ", total_voters).unwrap();
-        write!(text, "Pending vote {} users: ", non_voters.len()).unwrap();
+        write!(
+            text,
+            "Voted {} user{}, pending vote {} user{}: ",
+            total_voters,
+            if total_voters == 1 { "" } else { "s" },
+            non_voters.len(),
+            if non_voters.len() == 1 { "" } else { "s" },
+        )
+        .unwrap();
         format_users2(&mut text, non_voters.iter().map(|(id, u)| (*id, u)));
         text.push_str(".\n");
     }
 
-    bot.edit_message_text(info_chat_id, info_message_id.into(), text)
-        .parse_mode(teloxide::types::ParseMode::Html)
-        .disable_web_page_preview(true)
-        .await?;
-
-    Ok(())
+    text
 }
 
 fn db_find_poll(
     conn: &mut SqliteConnection,
     poll_id: &str,
-) -> Result<Option<models::TrackedPoll>, diesel::result::Error> {
+) -> Result<
+    Option<(models::TrackedPoll, Option<models::TgUser>)>,
+    diesel::result::Error,
+> {
     schema::tracked_polls::table
         .filter(schema::tracked_polls::tg_poll_id.eq(poll_id))
+        .left_join(
+            schema::tg_users::table
+                .on(schema::tracked_polls::creator_id.eq(schema::tg_users::id)),
+        )
         .first(conn)
         .optional()
 }

@@ -197,7 +197,7 @@ fn format_user(
     }
 }
 
-fn format_user2(
+pub fn format_user2(
     out: &mut String,
     tg_id: DbUserId,
     user: &Option<crate::models::TgUser>,
