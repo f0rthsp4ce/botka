@@ -88,6 +88,7 @@ async fn run_bot(config_fpath: &str) -> Result<()> {
             )
             .branch(
                 Update::filter_callback_query()
+                    .branch(modules::polls::callback_handler())
                     .branch(modules::borrowed_items::callback_handler())
                     .endpoint(drop_callback_query),
             )

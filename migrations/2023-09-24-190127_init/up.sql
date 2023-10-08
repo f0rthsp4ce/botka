@@ -50,7 +50,8 @@ CREATE TABLE options (
 CREATE TABLE tracked_polls (
   tg_poll_id TEXT NOT NULL,
   creator_id BIGINT NOT NULL,
-  info_chat_id BIGINT NOT NULL,
+  info_chat_id BIGINT NOT NULL, -- TODO: rename to chat_id
+  -- TODO: add poll_message_id INTEGER NOT NULL,
   info_message_id INTEGER NOT NULL,
   voted_users TEXT NOT NULL,
   PRIMARY KEY (tg_poll_id)

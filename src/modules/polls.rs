@@ -6,7 +6,8 @@ use diesel::prelude::*;
 use teloxide::dispatching::UpdateFilterExt;
 use teloxide::prelude::*;
 use teloxide::types::{
-    Forward, ForwardedFrom, Me, MediaKind, MessageCommon, MessageKind, User,
+    Forward, ForwardedFrom, InlineKeyboardButton, InlineKeyboardMarkup, Me,
+    MediaKind, MessageCommon, MessageKind, ReplyMarkup, User,
 };
 
 use crate::common::{
@@ -22,6 +23,10 @@ pub fn message_handler() -> CommandHandler<Result<()>> {
 
 pub fn poll_answer_handler() -> CommandHandler<Result<()>> {
     Update::filter_poll_answer().endpoint(handle_poll_answer)
+}
+
+pub fn callback_handler() -> CommandHandler<Result<()>> {
+    dptree::filter_map(filter_callbacks).endpoint(handle_callback)
 }
 
 #[derive(Debug, Clone)]
@@ -140,6 +145,7 @@ async fn intercept_new_poll(
         )
         .reply_to_message_id(new_poll.id)
         .parse_mode(teloxide::types::ParseMode::Html)
+        .reply_markup(ReplyMarkup::InlineKeyboard(make_keyboard(&poll_id)))
         .disable_web_page_preview(true)
         .await?;
 
@@ -246,7 +252,64 @@ async fn handle_poll_answer(
         poll_text(creator, &non_voters, total_voters),
     )
     .parse_mode(teloxide::types::ParseMode::Html)
+    .reply_markup(make_keyboard(&poll_answer.poll_id))
     .disable_web_page_preview(true)
+    .await?;
+
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct StopPollQuery(String);
+
+fn filter_callbacks(callback: CallbackQuery) -> Option<StopPollQuery> {
+    let poll_id = callback.data.as_ref()?.strip_prefix("p:stop:")?;
+    Some(StopPollQuery(poll_id.to_string()))
+}
+
+async fn handle_callback(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    stop: StopPollQuery,
+    callback: CallbackQuery,
+) -> Result<()> {
+    let db_poll = db_find_poll(&mut *env.conn(), &stop.0)?;
+    let db_poll = match db_poll {
+        Some((db_poll, _)) => db_poll,
+        None => {
+            bot.answer_callback_query(&callback.id)
+                .text("Poll not found.")
+                .await?;
+            return Ok(());
+        }
+    };
+
+    if callback.from.id != db_poll.creator_id.into() {
+        bot.answer_callback_query(&callback.id)
+            .text("You are not the creator of this poll.")
+            .await?;
+        return Ok(());
+    }
+
+    // TODO: store poll message id in the database
+    let poll_message =
+        callback.message.as_ref().and_then(|m| m.reply_to_message());
+    let poll_message = match poll_message {
+        Some(m) => m,
+        None => {
+            bot.answer_callback_query(&callback.id)
+                .text("Poll message not found.")
+                .await?;
+            return Ok(());
+        }
+    };
+
+    bot.answer_callback_query(&callback.id).await?;
+    bot.stop_poll(db_poll.info_chat_id, poll_message.id).await?;
+    bot.edit_message_reply_markup(
+        db_poll.info_chat_id,
+        db_poll.info_message_id.into(),
+    )
     .await?;
 
     Ok(())
@@ -280,6 +343,13 @@ fn poll_text(
     }
 
     text
+}
+
+fn make_keyboard(poll_id: &str) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+        "Stop poll",
+        format!("p:stop:{}", poll_id),
+    )]])
 }
 
 fn db_find_poll(
