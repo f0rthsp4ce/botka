@@ -260,11 +260,28 @@ async fn handle_poll_answer(
 }
 
 #[derive(Debug, Clone)]
-struct StopPollQuery(String);
+struct StopPollQuery {
+    poll_id: String,
+    action: Action,
+}
+
+#[derive(Debug, Copy, Clone)]
+enum Action {
+    Stop,
+    Confirm,
+    Cancel,
+}
 
 fn filter_callbacks(callback: CallbackQuery) -> Option<StopPollQuery> {
-    let poll_id = callback.data.as_ref()?.strip_prefix("p:stop:")?;
-    Some(StopPollQuery(poll_id.to_string()))
+    let data = callback.data.as_ref()?.strip_prefix("p:")?;
+    let (action, poll_id) = data.split_once(':')?;
+    let action = match action {
+        "stop" => Action::Stop,
+        "confirm" => Action::Confirm,
+        "cancel" => Action::Cancel,
+        _ => return None,
+    };
+    Some(StopPollQuery { poll_id: poll_id.to_string(), action })
 }
 
 async fn handle_callback(
@@ -273,7 +290,7 @@ async fn handle_callback(
     stop: StopPollQuery,
     callback: CallbackQuery,
 ) -> Result<()> {
-    let db_poll = db_find_poll(&mut *env.conn(), &stop.0)?;
+    let db_poll = db_find_poll(&mut *env.conn(), &stop.poll_id)?;
     let db_poll = match db_poll {
         Some((db_poll, _)) => db_poll,
         None => {
@@ -304,13 +321,36 @@ async fn handle_callback(
         }
     };
 
-    bot.answer_callback_query(&callback.id).await?;
-    bot.stop_poll(db_poll.info_chat_id, poll_message.id).await?;
-    bot.edit_message_reply_markup(
+    let reply_markup = match stop.action {
+        Action::Stop => {
+            bot.answer_callback_query(&callback.id)
+                .text(
+                    // Based on the original Telegram client message
+                    "If you stop this poll now, \
+                    nobody will be able to vote in anymore. \
+                    This action cannot be undone.",
+                )
+                .show_alert(true)
+                .await?;
+            Some(make_keyboard_confirmation(&stop.poll_id))
+        }
+        Action::Confirm => {
+            bot.answer_callback_query(&callback.id).await?;
+            bot.stop_poll(db_poll.info_chat_id, poll_message.id).await?;
+            None
+        }
+        Action::Cancel => {
+            bot.answer_callback_query(&callback.id).await?;
+            Some(make_keyboard(&stop.poll_id))
+        }
+    };
+
+    let mut edit = bot.edit_message_reply_markup(
         db_poll.info_chat_id,
         db_poll.info_message_id.into(),
-    )
-    .await?;
+    );
+    edit.reply_markup = reply_markup;
+    edit.await?;
 
     Ok(())
 }
@@ -350,6 +390,19 @@ fn make_keyboard(poll_id: &str) -> InlineKeyboardMarkup {
         "Stop poll",
         format!("p:stop:{}", poll_id),
     )]])
+}
+
+fn make_keyboard_confirmation(poll_id: &str) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![
+        InlineKeyboardButton::callback(
+            "Cancel (do not stop)",
+            format!("p:cancel:{}", poll_id),
+        ),
+        InlineKeyboardButton::callback(
+            "Confirm (stop poll)",
+            format!("p:confirm:{}", poll_id),
+        ),
+    ]])
 }
 
 fn db_find_poll(
