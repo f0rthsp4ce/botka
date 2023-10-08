@@ -1,9 +1,12 @@
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use common::{MyDialogue, State};
 use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
+use itertools::Itertools;
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::{Dispatcher, HandlerExt, UpdateFilterExt};
 use teloxide::payloads::AnswerCallbackQuerySetters;
@@ -21,25 +24,35 @@ mod tracing_proxy;
 mod utils;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     std::env::set_var("RUST_LOG", "info");
     pretty_env_logger::init();
 
-    let config: models::Config = serde_yaml::from_reader(
-        std::fs::File::open(std::env::args().nth(1).expect("No config file"))
-            .expect("Failed to open config file"),
-    )
-    .expect("Failed to parse config");
+    let args = std::env::args().collect_vec();
+    let args = args.iter().map(|s| s.as_str()).collect_vec();
+    match args.as_slice()[1..] {
+        ["bot", config_file] => run_bot(config_file).await?,
+        ["scrape", db_file, log_file] => scrape_log(db_file, log_file)?,
+        _ => {
+            eprintln!("Usage: {} bot <config.yaml>", args[0]);
+            eprintln!("Usage: {} scrape <db.sqlite> <log.txt>", args[0]);
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_bot(config_fpath: &str) -> Result<()> {
+    let config: models::Config =
+        serde_yaml::from_reader(File::open(config_fpath)?)
+            .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
 
     let bot_env = Arc::new(common::BotEnv {
-        conn: Mutex::new(
-            SqliteConnection::establish(&config.db)
-                .expect("Failed to connect to database"),
-        ),
+        conn: Mutex::new(SqliteConnection::establish(&config.db)?),
         reqwest_client: reqwest::ClientBuilder::new()
             .danger_accept_invalid_certs(true)
-            .build()
-            .expect("Failed to build reqwest client"),
+            .build()?,
         openai_client: async_openai::Client::with_config(
             async_openai::config::OpenAIConfig::new()
                 .with_api_key(config.services.openai.api_key.clone()),
@@ -47,12 +60,9 @@ async fn main() {
         config,
     });
 
-    let proxy_addr = tracing_proxy::start(bot_env.config.log_file.as_str())
-        .await
-        .expect("Failed to start proxy");
-    let bot = Bot::new(&bot_env.config.telegram.token).set_api_url(
-        reqwest::Url::parse(&proxy_addr).expect("Failed to parse proxy URL"),
-    );
+    let proxy_addr =
+        tracing_proxy::start(bot_env.config.log_file.as_str()).await?;
+    let bot = Bot::new(&bot_env.config.telegram.token).set_api_url(proxy_addr);
 
     let mut dispatcher = Dispatcher::builder(
         bot.clone(),
@@ -100,6 +110,25 @@ async fn main() {
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());
 
     futures::future::join_all(join_handles).await;
+
+    Ok(())
+}
+
+fn scrape_log(db_fpath: &str, log_fpath: &str) -> Result<()> {
+    let mut conn = SqliteConnection::establish(db_fpath)?;
+    let mut log_file = File::open(log_fpath)?;
+    let mut buf_reader = BufReader::new(&mut log_file);
+    let mut line = String::new();
+
+    conn.exclusive_transaction(|conn| {
+        while buf_reader.read_line(&mut line)? > 0 {
+            let update: Update = serde_json::from_str(&line)?;
+            modules::tg_scraper::scrape_raw(conn, update)?;
+            line.clear();
+        }
+        Result::<_, anyhow::Error>::Ok(())
+    })?;
+    Ok(())
 }
 
 async fn reset_dialogue_on_command(msg: Message, dialogue: MyDialogue) {

@@ -28,7 +28,7 @@ struct GetUpdatesResponse {
 /// Start a proxy server that forwards requests to the Telegram API and logs
 /// getUpdates responses to a file.
 /// Returns the URL of the proxy server.
-pub async fn start(log_file: &str) -> Result<String> {
+pub async fn start(log_file: &str) -> Result<reqwest::Url> {
     // Make client from teloxide::net::default_reqwest_settings, plus 3 seconds.
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5 + 3))
@@ -61,7 +61,7 @@ pub async fn start(log_file: &str) -> Result<String> {
         }
     });
 
-    Ok(format!("http://{}", local_addr))
+    Ok(reqwest::Url::parse(&format!("http://{}", local_addr))?)
 }
 
 async fn handle_request(
