@@ -84,17 +84,15 @@ async fn run_bot(config_fpath: &str) -> Result<()> {
                     )
                     .branch(modules::polls::message_handler())
                     .branch(modules::borrowed_items::command_handler())
-                    // Drop all other messages so dptree doesn't complain about
-                    // unhandled messages
-                    .endpoint(|| async { Ok(()) }),
+                    .endpoint(drop_endpoint),
             )
             .branch(
                 Update::filter_callback_query()
                     .branch(modules::borrowed_items::callback_handler())
-                    .branch(dptree::entry().endpoint(handle_callback_query)),
+                    .endpoint(drop_callback_query),
             )
             .branch(modules::polls::poll_answer_handler())
-            .into(),
+            .endpoint(drop_endpoint),
     )
     .dependencies(dptree::deps![InMemStorage::<State>::new(), bot_env.clone()])
     .build();
@@ -148,14 +146,21 @@ async fn reset_dialogue_on_command(msg: Message, dialogue: MyDialogue) {
     }
 }
 
-async fn handle_callback_query(
+async fn drop_callback_query(
     bot: Bot,
     callback_query: CallbackQuery,
 ) -> Result<()> {
-    log::info!("Chosen inline result: {:?}", callback_query);
+    log::warn!(
+        "Unexpected callback query: {:?}",
+        serde_json::to_string(&callback_query).unwrap()
+    );
     bot.answer_callback_query(&callback_query.id)
-        .text("You chose this inline result")
+        .text("Error: unexpected callback query")
         .await?;
+    Ok(())
+}
+
+async fn drop_endpoint() -> Result<()> {
     Ok(())
 }
 
