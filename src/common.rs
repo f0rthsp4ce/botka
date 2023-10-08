@@ -2,8 +2,8 @@ use std::fmt::Write;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use diesel::{
-    Connection, ExpressionMethods, OptionalExtension, QueryDsl, QueryResult,
-    RunQueryDsl, SqliteConnection,
+    ExpressionMethods, OptionalExtension, QueryDsl, QueryResult, RunQueryDsl,
+    SqliteConnection,
 };
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::DpHandlerDescription;
@@ -77,7 +77,7 @@ impl BotEnv {
         &self,
         f: impl FnOnce(&mut SqliteConnection) -> QueryResult<T>,
     ) -> QueryResult<T> {
-        self.conn().transaction(f)
+        self.conn().exclusive_transaction(f)
     }
 }
 
