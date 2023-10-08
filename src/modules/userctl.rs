@@ -58,7 +58,7 @@ async fn cmd_userctl(
 
     let tg_id = DbUserId::from(msg.from().unwrap().id);
 
-    let updated_macs = env.conn().transaction(|conn| {
+    let updated_macs = env.transaction(|conn| {
         diesel::delete(crate::schema::user_macs::table)
             .filter(crate::schema::user_macs::tg_id.eq(tg_id))
             .filter(
@@ -85,7 +85,7 @@ async fn cmd_userctl(
             .select(crate::schema::user_macs::mac)
             .load::<String>(conn)?;
 
-        Result::<_, diesel::result::Error>::Ok(macs)
+        Ok(macs)
     })?;
 
     bot.reply_message(&msg, format!("Updated: {:?}", updated_macs)).await?;

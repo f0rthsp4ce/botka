@@ -143,13 +143,13 @@ async fn hande_poll_forward(
     poll_id: &str,
     env: Arc<BotEnv>,
 ) -> Result<()> {
-    let poll_results = env.conn().transaction(|conn| {
+    let poll_results = env.transaction(|conn| {
         let db_poll = match db_find_poll(conn, poll_id)? {
             Some(db_poll) => db_poll,
             None => return Ok(None),
         };
         let non_voters = db_find_non_voters(conn, &db_poll.voted_users)?;
-        Result::<_, diesel::result::Error>::Ok(Some(non_voters))
+        Ok(Some(non_voters))
     })?;
 
     let mut text = String::new();
@@ -180,7 +180,7 @@ async fn handle_poll_answer(
     poll_answer: PollAnswer,
     env: Arc<BotEnv>,
 ) -> Result<()> {
-    let update = env.conn().transaction(|conn| {
+    let update = env.transaction(|conn| {
         let db_poll = match db_find_poll(conn, &poll_answer.poll_id)? {
             Some(db_poll) => db_poll,
             None => return Ok(None),
@@ -205,7 +205,7 @@ async fn handle_poll_answer(
 
         let non_voters = db_find_non_voters(conn, &voted_users)?;
 
-        Result::<_, diesel::result::Error>::Ok(Some((
+        Ok(Some((
             db_poll.info_chat_id,
             db_poll.info_message_id,
             non_voters,

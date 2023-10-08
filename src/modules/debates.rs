@@ -67,7 +67,7 @@ async fn cmd_debate_start<'a>(
     msg: Message,
     description: String,
 ) -> Result<()> {
-    let was_started = env.conn().transaction(|conn| {
+    let was_started = env.transaction(|conn| {
         if crate::models::debate.get(conn)?.is_some() {
             Ok(true)
         } else {
@@ -79,7 +79,7 @@ async fn cmd_debate_start<'a>(
                     started_at: chrono::Utc::now(),
                 },
             )?;
-            QueryResult::Ok(false)
+            Ok(false)
         }
     })?;
 
@@ -100,7 +100,7 @@ async fn cmd_debate_status<'a>(
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
-    let result = env.conn().transaction(|conn| {
+    let result = env.transaction(|conn| {
         if let Some(debate) = crate::models::debate.get(conn)? {
             let messages = crate::schema::residents::table
                 .left_join(
@@ -118,9 +118,9 @@ async fn cmd_debate_status<'a>(
                     Option<crate::models::Forward>,
                     Option<crate::models::TgUser>,
                 )>(conn)?;
-            QueryResult::Ok(Some((debate, messages)))
+            Ok(Some((debate, messages)))
         } else {
-            QueryResult::Ok(None)
+            Ok(None)
         }
     })?;
 
@@ -174,15 +174,15 @@ async fn cmd_debate_end<'a>(
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
-    let result = env.conn().transaction(|conn| {
+    let result = env.transaction(|conn| {
         if crate::models::debate.get(conn)?.is_some() {
             let messages = crate::schema::forwards::table
                 .load::<crate::models::Forward>(conn)?;
             diesel::delete(crate::schema::forwards::table).execute(conn)?;
             crate::models::debate.unset(conn)?;
-            QueryResult::Ok(Some(messages))
+            Ok(Some(messages))
         } else {
-            QueryResult::Ok(None)
+            Ok(None)
         }
     })?;
 
@@ -260,7 +260,7 @@ pub async fn debate_send<'a>(
         )
         .await?;
 
-    let previous = env.conn().transaction(|conn| {
+    let previous = env.transaction(|conn| {
         let previous = crate::schema::forwards::table
             .filter(crate::schema::forwards::orig_chat_id.eq(msg.chat.id.0))
             .first::<crate::models::Forward>(conn)
@@ -277,7 +277,7 @@ pub async fn debate_send<'a>(
                 backup_text: msg_backup.text().unwrap_or_default().to_string(),
             })
             .execute(conn)?;
-        QueryResult::Ok(previous)
+        Ok(previous)
     })?;
 
     if let Some(previous) = previous {
