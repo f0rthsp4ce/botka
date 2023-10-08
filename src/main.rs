@@ -23,10 +23,13 @@ mod schema;
 mod tracing_proxy;
 mod utils;
 
+const VERSION: &str = git_version::git_version!(fallback = "unknown");
+
 #[tokio::main]
 async fn main() -> Result<()> {
     std::env::set_var("RUST_LOG", "info");
     pretty_env_logger::init();
+    log::info!("Version {}", VERSION);
 
     let args = std::env::args().collect_vec();
     let args = args.iter().map(|s| s.as_str()).collect_vec();

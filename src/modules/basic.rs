@@ -30,6 +30,9 @@ enum Command {
 
     #[command(description = "show status.")]
     Status,
+
+    #[command(description = "show bot version.")]
+    Version,
 }
 
 pub fn command_handler() -> CommandHandler<Result<()>> {
@@ -51,6 +54,9 @@ async fn start<'a>(
         }
         Command::Residents => cmd_list_residents(bot, env, msg).await?,
         Command::Status => cmd_status(bot, env, msg).await?,
+        Command::Version => {
+            bot.reply_message(&msg, crate::VERSION).await?;
+        }
     }
     Ok(())
 }
