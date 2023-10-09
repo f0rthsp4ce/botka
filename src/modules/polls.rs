@@ -46,6 +46,7 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
 
     match msg.forward() {
         None if true
+                && poll.question.starts_with("!")
                 // Do not touch polls that already have votes or closed
                 && poll.total_voter_count == 0
                 && !poll.is_closed
