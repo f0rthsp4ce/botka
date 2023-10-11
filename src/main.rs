@@ -22,6 +22,7 @@ mod modules;
 mod schema;
 mod tracing_proxy;
 mod utils;
+mod web_srv;
 
 const VERSION: &str = git_version::git_version!(fallback = "unknown");
 
@@ -107,6 +108,11 @@ async fn run_bot(config_fpath: &str) -> Result<()> {
         bot_env.clone(),
         bot.clone(),
         cancel.clone(),
+    )));
+
+    join_handles.push(tokio::spawn(web_srv::run(
+        SqliteConnection::establish(&bot_env.config.db)?,
+        bot_env.config.server_addr,
     )));
 
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());

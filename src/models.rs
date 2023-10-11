@@ -1,8 +1,9 @@
 use std::fmt::Debug;
+use std::net::SocketAddr;
 
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use teloxide::types::{ChatId, ChatMember};
+use teloxide::types::{ChatId, ChatMember, UserId};
 
 use crate::db::{config_option_def, DbChatId, DbMessageId, DbUserId};
 use crate::utils::Sqlizer;
@@ -122,6 +123,7 @@ pub struct Config {
     pub telegram: TelegramConfig,
     pub db: String,
     pub log_file: String,
+    pub server_addr: SocketAddr,
     pub services: ServicesConfig,
 }
 
@@ -177,4 +179,13 @@ pub struct OpenAIConfig {
     pub api_key: String,
     #[serde(default)]
     pub disable: bool,
+}
+
+// Serde models
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DataResident {
+    pub id: UserId,
+    pub username: Option<String>,
+    pub first_name: String,
+    pub last_name: Option<String>,
 }
