@@ -1,10 +1,8 @@
 use std::time::Duration;
 
-use nom::bytes::complete::{take_while1, take_while_m_n};
-use nom::character::complete::{char, digit1, one_of};
-use nom::combinator::{eof, opt};
+use nom::character::complete::{digit1, one_of};
 use nom::error::ParseError;
-use nom::sequence::{preceded, terminated, tuple};
+use nom::sequence::tuple;
 use nom::IResult;
 use serde::{Deserialize, Deserializer};
 
@@ -35,15 +33,12 @@ fn duration(mut input: &str) -> IResult<&str, Duration> {
 
 fn duration_segment(input: &str) -> IResult<&str, Duration> {
     let (input, (value, unit)) = tuple((digit1, one_of("wdhms")))(input)?;
-    let value = match value.parse::<u64>() {
-        Ok(value) => value,
-        Err(_) => {
-            // TODO: better error
-            return Err(nom::Err::Error(ParseError::from_error_kind(
-                input,
-                nom::error::ErrorKind::Digit,
-            )));
-        }
+    let Ok(value) = value.parse::<u64>() else {
+        // TODO: better error
+        return Err(nom::Err::Error(ParseError::from_error_kind(
+            input,
+            nom::error::ErrorKind::Digit,
+        )));
     };
     let duration = match unit {
         'w' => Duration::from_secs(value * 7 * 24 * 60 * 60),
@@ -54,26 +49,6 @@ fn duration_segment(input: &str) -> IResult<&str, Duration> {
         _ => unreachable!(),
     };
     Ok((input, duration))
-}
-
-/// Parse a telegram bot command, e.g. "/command@my_bot". A bot name is
-/// optional.
-pub fn parse_tg_bot_command(input: &str) -> Option<(&str, Option<&str>)> {
-    terminated(tg_bot_command, eof)(input).ok().map(|x| x.1)
-}
-
-fn tg_bot_command(input: &str) -> IResult<&str, (&str, Option<&str>)> {
-    let (input, _) = char('/')(input)?;
-    let (input, command) = take_while_m_n(
-        1,
-        64,
-        |c| matches!(c, '0'..='9' | 'A'..='Z' | 'a'..='z' | '_'),
-    )(input)?;
-    let (input, bot_name) = opt(preceded(
-        char('@'),
-        take_while1(|c| matches!(c, '0'..='9' | 'A'..='Z' | 'a'..='z' | '_')),
-    ))(input)?;
-    Ok((input, (command, bot_name)))
 }
 
 #[cfg(test)]
@@ -109,15 +84,5 @@ mod tests {
         let time_struct: TestDuration =
             serde_json::from_str(&format!("\"{DURATION_STR}\"")).unwrap();
         assert_eq!(time_struct.0, DURATION);
-    }
-
-    #[test]
-    fn test_parse_tg_bot_command() {
-        assert_eq!(parse_tg_bot_command("/command"), Some(("command", None)));
-        assert_eq!(
-            parse_tg_bot_command("/command@my_bot"),
-            Some(("command", Some("my_bot")))
-        );
-        assert_eq!(parse_tg_bot_command("/command "), None);
     }
 }

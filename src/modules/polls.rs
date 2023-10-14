@@ -45,8 +45,9 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
     };
 
     match msg.forward() {
+        #[allow(clippy::nonminimal_bool)]
         None if true
-                && poll.question.starts_with("!")
+                && poll.question.starts_with('!')
                 // Do not touch polls that already have votes or closed
                 && poll.total_voter_count == 0
                 && !poll.is_closed
@@ -55,7 +56,7 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
                 // Bots can't obtain information from quiz polls, so skip them
                 && poll.poll_type == teloxide::types::PollType::Regular
                 // Allow only residents
-                && user_role(&mut *env.conn(), msg.from()?) >= Role::Resident =>
+                && user_role(&mut env.conn(), msg.from()?) >= Role::Resident =>
         {
             Some(PollKind::New(poll.clone()))
         }
@@ -63,7 +64,7 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
             from: ForwardedFrom::User(User { id, .. }), ..
         }) if id == &me.user.id
             && msg.chat.is_private()
-            && user_role(&mut *env.conn(), msg.from()?) >= Role::Resident =>
+            && user_role(&mut env.conn(), msg.from()?) >= Role::Resident =>
         {
             Some(PollKind::Forward(poll.id.clone()))
         }
@@ -104,6 +105,7 @@ async fn intercept_new_poll(
     new_poll.reply_to_message_id = msg.reply_to_message().map(|m| m.id);
     let new_poll = new_poll.await?;
 
+    #[allow(clippy::single_match_else)]
     let poll_id = match new_poll.kind {
         MessageKind::Common(MessageCommon {
             media_kind: MediaKind::Poll(poll),
@@ -128,7 +130,7 @@ async fn intercept_new_poll(
         return Ok(());
     }
 
-    let non_voters = db_find_non_voters(&mut *env.conn(), &[]);
+    let non_voters = db_find_non_voters(&mut env.conn(), &[]);
 
     // TODO: cleanup this mess
     let creator_id = msg.from().unwrap().id.into();
@@ -170,9 +172,8 @@ async fn hande_poll_forward(
     env: Arc<BotEnv>,
 ) -> Result<()> {
     let poll_results = env.transaction(|conn| {
-        let (db_poll, _) = match db_find_poll(conn, poll_id)? {
-            Some(db_poll) => db_poll,
-            None => return Ok(None),
+        let Some((db_poll, _)) = db_find_poll(conn, poll_id)? else {
+            return Ok(None);
         };
         let non_voters = db_find_non_voters(conn, &db_poll.voted_users)?;
         Ok(Some(non_voters))
@@ -187,9 +188,9 @@ async fn hande_poll_forward(
             non_voters
                 .iter()
                 .flat_map(|(_, u)| u)
-                .flat_map(|u| u.username.as_ref())
+                .filter_map(|u| u.username.as_ref())
                 .for_each(|u| {
-                    write!(text, " @{}", u).unwrap();
+                    write!(text, " @{u}").unwrap();
                 });
         }
     } else {
@@ -207,10 +208,10 @@ async fn handle_poll_answer(
     env: Arc<BotEnv>,
 ) -> Result<()> {
     let update = env.transaction(|conn| {
-        let (db_poll, creator) = match db_find_poll(conn, &poll_answer.poll_id)?
-        {
-            Some(db_poll) => db_poll,
-            None => return Ok(None),
+        let Some((db_poll, creator)) =
+            db_find_poll(conn, &poll_answer.poll_id)?
+        else {
+            return Ok(None);
         };
 
         let mut voted_users = (*db_poll.voted_users).clone();
@@ -241,11 +242,16 @@ async fn handle_poll_answer(
         )))
     })?;
 
-    let (info_chat_id, info_message_id, creator, non_voters, total_voters) =
-        match update {
-            Some(update) => update,
-            None => return Ok(()),
-        };
+    let Some((
+        info_chat_id,
+        info_message_id,
+        creator,
+        non_voters,
+        total_voters,
+    )) = update
+    else {
+        return Ok(());
+    };
 
     bot.edit_message_text(
         info_chat_id,
@@ -291,15 +297,10 @@ async fn handle_callback(
     stop: StopPollQuery,
     callback: CallbackQuery,
 ) -> Result<()> {
-    let db_poll = db_find_poll(&mut *env.conn(), &stop.poll_id)?;
-    let db_poll = match db_poll {
-        Some((db_poll, _)) => db_poll,
-        None => {
-            bot.answer_callback_query(&callback.id)
-                .text("Poll not found.")
-                .await?;
-            return Ok(());
-        }
+    let db_poll = db_find_poll(&mut env.conn(), &stop.poll_id)?;
+    let Some((db_poll, _)) = db_poll else {
+        bot.answer_callback_query(&callback.id).text("Poll not found.").await?;
+        return Ok(());
     };
 
     if callback.from.id != db_poll.creator_id.into() {
@@ -312,14 +313,11 @@ async fn handle_callback(
     // TODO: store poll message id in the database
     let poll_message =
         callback.message.as_ref().and_then(|m| m.reply_to_message());
-    let poll_message = match poll_message {
-        Some(m) => m,
-        None => {
-            bot.answer_callback_query(&callback.id)
-                .text("Poll message not found.")
-                .await?;
-            return Ok(());
-        }
+    let Some(poll_message) = poll_message else {
+        bot.answer_callback_query(&callback.id)
+            .text("Poll message not found.")
+            .await?;
+        return Ok(());
     };
 
     let reply_markup = match stop.action {
@@ -389,7 +387,7 @@ fn poll_text(
 fn make_keyboard(poll_id: &str) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
         "Stop poll",
-        format!("p:stop:{}", poll_id),
+        format!("p:stop:{poll_id}"),
     )]])
 }
 
@@ -397,11 +395,11 @@ fn make_keyboard_confirmation(poll_id: &str) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![vec![
         InlineKeyboardButton::callback(
             "Cancel (do not stop)",
-            format!("p:cancel:{}", poll_id),
+            format!("p:cancel:{poll_id}"),
         ),
         InlineKeyboardButton::callback(
             "Confirm (stop poll)",
-            format!("p:confirm:{}", poll_id),
+            format!("p:confirm:{poll_id}"),
         ),
     ]])
 }

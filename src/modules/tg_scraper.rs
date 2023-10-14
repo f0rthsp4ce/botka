@@ -22,7 +22,7 @@ pub fn scrape(env: Arc<BotEnv>, upd: Update) {
         scrape_raw(conn, upd)?;
         Ok(())
     })
-    .unwrap()
+    .unwrap();
 }
 
 pub fn scrape_raw(
@@ -58,6 +58,7 @@ pub fn scrape_raw(
     Ok(())
 }
 
+#[allow(clippy::option_map_unit_fn)] // allow for brevity
 impl<'a> ScrapedInfo<'a> {
     pub fn scrape(update: &'a Update) -> Self {
         let mut info = ScrapedInfo {

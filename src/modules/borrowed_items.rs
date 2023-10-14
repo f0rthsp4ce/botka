@@ -13,7 +13,6 @@ use teloxide::types::{
     MessageKind, ParseMode, ReplyMarkup, User,
 };
 use teloxide::utils::html;
-use unwrap_or::unwrap_some_or;
 
 use crate::common::{BotEnv, CommandHandler};
 use crate::utils::Sqlizer;
@@ -40,8 +39,8 @@ async fn handle_message(
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
-    let user = unwrap_some_or!(msg.from(), return Ok(()));
-    let text = unwrap_some_or!(textify_message(&msg), return Ok(()));
+    let Some(user) = msg.from() else { return Ok(()) };
+    let Some(text) = textify_message(&msg) else { return Ok(()) };
     let item_names = match classify(env.clone(), &text).await? {
         ClassificationResult::Took(items) => items,
         ClassificationResult::Returned => return Ok(()),
@@ -58,7 +57,7 @@ async fn handle_message(
         .collect_vec();
 
     let bot_message = bot
-        .send_message(msg.chat.id, make_text(&user, &items))
+        .send_message(msg.chat.id, make_text(user, &items))
         .message_thread_id(msg.thread_id.unwrap())
         .parse_mode(ParseMode::Html)
         .reply_markup(ReplyMarkup::InlineKeyboard(make_keyboard(
@@ -221,17 +220,16 @@ async fn classify(
     text: &str,
 ) -> Result<ClassificationResult> {
     if env.config.services.openai.disable {
-        classify_dumb(text).await
+        classify_dumb(text)
     } else {
         classify_openai(env, text).await
     }
 }
 
-async fn classify_dumb(text: &str) -> Result<ClassificationResult> {
-    let items = match text.strip_prefix("took") {
-        Some(text) => {
-            text.trim().split(' ').map(|s| s.to_string()).collect::<Vec<_>>()
-        }
+#[allow(clippy::unnecessary_wraps)] // for consistency
+fn classify_dumb(text: &str) -> Result<ClassificationResult> {
+    let items: Vec<_> = match text.strip_prefix("took") {
+        Some(text) => text.trim().split(' ').map(|s| s.to_string()).collect(),
         None => return Ok(ClassificationResult::Unknown),
     };
     if items.is_empty() {
@@ -266,7 +264,7 @@ async fn classify_openai(
         .message
         .content
         .as_ref()
-        .ok_or(anyhow::anyhow!("No content in response"))?
+        .ok_or_else(|| anyhow::anyhow!("No content in response"))?
         .as_str();
     if response_text == "\"R\"" {
         return Ok(ClassificationResult::Returned);
@@ -282,7 +280,7 @@ async fn classify_openai(
     Ok(ClassificationResult::Unknown)
 }
 
-/// Convert a message into a text suitable for OpenAI API.
+/// Convert a message into a text suitable for `OpenAI` API.
 fn textify_message(msg: &Message) -> Option<String> {
     let mut result = String::new();
     match &msg.kind {

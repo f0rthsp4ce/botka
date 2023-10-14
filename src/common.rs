@@ -81,7 +81,7 @@ impl BotEnv {
     }
 }
 
-/// Derive macro for HasCommandRules trait. Should be applied with
+/// Derive macro for `HasCommandRules` trait. Should be applied with
 /// `macro_rules_attribute::derive`.
 #[macro_export]
 macro_rules! HasCommandRules {
@@ -191,7 +191,7 @@ fn format_user(
             format!("id={} (unknown)", UserId::from(tg_id).0)
         }
         Some(crate::models::TgUser { username: Some(username), .. }) => {
-            format!("@{}", username)
+            format!("@{username}")
         }
         Some(crate::models::TgUser { first_name, .. }) => first_name.clone(),
     }
@@ -208,7 +208,7 @@ pub fn format_user2(
         }
         Some(u) => {
             if let Some(username) = &u.username {
-                write!(out, "<a href=\"https://t.me/{}\">", username).unwrap();
+                write!(out, "<a href=\"https://t.me/{username}\">").unwrap();
             }
             write!(out, "{}", escape(&u.first_name)).unwrap();
             if let Some(last_name) = &u.last_name {

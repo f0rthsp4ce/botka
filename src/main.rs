@@ -1,3 +1,16 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+// False positives
+#![allow(clippy::needless_pass_by_value)] // for dptree handlers
+// Style
+#![allow(clippy::items_after_statements)]
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+// FIXME: fix these
+#![allow(clippy::cast_lossless)]
+#![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::too_many_lines)]
+
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::sync::{Arc, Mutex};
@@ -140,14 +153,11 @@ fn scrape_log(db_fpath: &str, log_fpath: &str) -> Result<()> {
 }
 
 async fn reset_dialogue_on_command(msg: Message, dialogue: MyDialogue) {
-    let message_is_command = msg
-        .entities()
-        .and_then(|e| e.first())
-        .map(|e| {
+    let message_is_command =
+        msg.entities().and_then(|e| e.first()).is_some_and(|e| {
             e.kind == teloxide::types::MessageEntityKind::BotCommand
                 && e.offset == 0
-        })
-        .unwrap_or(false);
+        });
     if message_is_command {
         dialogue.update(State::Start).await.ok();
     }
@@ -188,7 +198,7 @@ fn run_signal_handler(
                     log::info!("dispatcher is shutdown...");
                 }
                 Err(_) => {
-                    log::info!("^C received, the dispatcher isn't running, ignoring the signal")
+                    log::info!("^C received, the dispatcher isn't running, ignoring the signal");
                 }
             }
         }

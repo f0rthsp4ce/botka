@@ -15,10 +15,10 @@ use crate::utils::{get_wikijs_updates, ResultExt};
 pub async fn task(env: Arc<BotEnv>, bot: Bot, shutdown: CancellationToken) {
     loop {
         select! {
-            _ = shutdown.cancelled() => {
+            () = shutdown.cancelled() => {
                 break;
             }
-            _ = sleep(Duration::from_secs(60)) => {}
+            () = sleep(Duration::from_secs(60)) => {}
         }
 
         check_wikijs_updates(env.clone(), bot.clone())

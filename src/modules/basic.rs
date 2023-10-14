@@ -79,7 +79,7 @@ async fn cmd_list_residents<'a>(
 
     text.push_str("Residents: ");
     text.push_str(&format_users(residents.iter().map(|(r, u)| (r, u))));
-    text.push_str(".");
+    text.push('.');
     bot.reply_message(&msg, text).await?;
     Ok(())
 }
@@ -93,27 +93,22 @@ async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
         last_seen: Duration,
     }
 
-    let leases = (|| async {
-        let conf = &env.config.services.mikrotik;
-        env.reqwest_client
-            .post(format!(
-                "https://{}/rest/ip/dhcp-server/lease/print",
-                conf.host
-            ))
-            .timeout(Duration::from_secs(5))
-            .basic_auth(&conf.username, Some(&conf.password))
-            .json(&serde_json::json!({
-                ".proplist": [
-                    "mac-address",
-                    "last-seen",
-                ]
-            }))
-            .send()
-            .await?
-            .json::<Vec<Lease>>()
-            .await
-    })()
-    .await;
+    let conf = &env.config.services.mikrotik;
+    let leases = env
+        .reqwest_client
+        .post(format!("https://{}/rest/ip/dhcp-server/lease/print", conf.host))
+        .timeout(Duration::from_secs(5))
+        .basic_auth(&conf.username, Some(&conf.password))
+        .json(&serde_json::json!({
+            ".proplist": [
+                "mac-address",
+                "last-seen",
+            ]
+        }))
+        .send()
+        .await?
+        .json::<Vec<Lease>>()
+        .await;
 
     let mut text = String::new();
     match leases {

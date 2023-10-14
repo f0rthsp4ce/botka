@@ -16,6 +16,7 @@ use crate::HasCommandRules;
 
 #[derive(BotCommands, Clone, HasCommandRules!)]
 #[command(rename_rule = "snake_case")]
+#[allow(clippy::enum_variant_names)]
 enum DebateCommand {
     #[command(description = "send debate message.")]
     #[custom(in_group = false, role = Role::Resident)]
@@ -125,16 +126,16 @@ async fn cmd_debate_status<'a>(
     })?;
 
     fn mk_iter(
-        messages: &Vec<(
+        messages: &[(
             crate::models::Resident,
             Option<crate::models::Forward>,
             Option<crate::models::TgUser>,
-        )>,
+        )],
         has_forward: bool,
     ) -> impl Iterator<
         Item = (&crate::models::Resident, &Option<crate::models::TgUser>),
     > {
-        messages.into_iter().filter_map(move |(resident, forward, tg_user)| {
+        messages.iter().filter_map(move |(resident, forward, tg_user)| {
             if forward.is_some() == has_forward {
                 Some((resident, tg_user))
             } else {
@@ -158,7 +159,7 @@ async fn cmd_debate_status<'a>(
 
         text.push_str("🕐 Not yet sent message: ");
         text.push_str(format_users(mk_iter(&messages, false)).as_str());
-        text.push_str(".");
+        text.push('.');
         text
     } else {
         "Debate not started yet.".to_string()

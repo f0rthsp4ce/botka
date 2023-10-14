@@ -1,5 +1,5 @@
 //! Store any serde-serializable type as JSON string in diesel database.
-//! TODO: use https://github.com/PPakalns/diesel_json
+//! TODO: use <https://github.com/PPakalns/diesel_json>
 
 use std::fmt::Debug;
 use std::ops::Deref;
@@ -18,7 +18,7 @@ pub struct Sqlizer<T>(T, String);
 impl<T: Serialize + Debug> Sqlizer<T> {
     pub fn new(t: T) -> Result<Self, serde_json::Error> {
         let s = serde_json::to_string(&t)?;
-        Ok(Sqlizer(t, s))
+        Ok(Self(t, s))
     }
     pub fn map(
         &self,
@@ -26,7 +26,7 @@ impl<T: Serialize + Debug> Sqlizer<T> {
     ) -> Result<Self, serde_json::Error> {
         let t = f(&self.0);
         let s = serde_json::to_string(&t)?;
-        Ok(Sqlizer(t, s))
+        Ok(Self(t, s))
     }
 }
 
@@ -66,6 +66,6 @@ where
     fn from_sql(bytes: DB::RawValue<'_>) -> diesel::deserialize::Result<Self> {
         let s = String::from_sql(bytes)?;
         let t = serde_json::from_str(&s)?;
-        Ok(Sqlizer(t, s))
+        Ok(Self(t, s))
     }
 }

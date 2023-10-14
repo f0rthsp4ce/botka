@@ -61,7 +61,7 @@ pub async fn start(log_file: &str) -> Result<reqwest::Url> {
         }
     });
 
-    Ok(reqwest::Url::parse(&format!("http://{}", local_addr))?)
+    Ok(reqwest::Url::parse(&format!("http://{local_addr}"))?)
 }
 
 async fn handle_request(
@@ -79,8 +79,8 @@ async fn handle_request(
         .headers
         .insert("host", "api.telegram.org".parse().expect("host header"));
     let path = parts.uri.path_and_query().unwrap().path();
-    const PREFIX: &'static str = "/bot";
-    const SUFIX: &'static str = "/GetUpdates";
+    const PREFIX: &str = "/bot";
+    const SUFIX: &str = "/GetUpdates";
     let is_get_updates = path.starts_with(PREFIX)
         && path.ends_with(SUFIX)
         && path[PREFIX.len()..path.len() - SUFIX.len()].find('/').is_none();

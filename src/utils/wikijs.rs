@@ -27,6 +27,7 @@ pub struct WikiJsUpdateState {
 /// Connect to Wiki.js GraphQL API and get summary of recent updates since
 /// `previous_check`.  Resulting datetime should be passed to `previous_check`
 /// in the next call.
+#[allow(clippy::single_char_add_str)] // for consistency
 pub async fn get_wikijs_updates(
     endpoint: &str,
     token: &str,
@@ -34,11 +35,8 @@ pub async fn get_wikijs_updates(
 ) -> Result<(Option<String>, WikiJsUpdateState)> {
     let endpoint = endpoint.trim_end_matches('/');
     let client = Client::new_with_headers(
-        format!("{}/graphql", endpoint),
-        [("authorization", format!("Bearer {}", token))]
-            .iter()
-            .cloned()
-            .collect(),
+        format!("{endpoint}/graphql"),
+        HashMap::from([("authorization", format!("Bearer {token}"))]),
     );
 
     // 1. Get list of recently updated pages
@@ -66,14 +64,11 @@ pub async fn get_wikijs_updates(
         })?;
 
     // This is a first run. Just return the last update time.
-    let mut update_state = match update_state {
-        Some(update_state) => update_state,
-        None => {
-            return Ok((
-                None,
-                WikiJsUpdateState { last_update, pages: HashMap::new() },
-            ))
-        }
+    let Some(mut update_state) = update_state else {
+        return Ok((
+            None,
+            WikiJsUpdateState { last_update, pages: HashMap::new() },
+        ));
     };
     let prev_last_update = update_state.last_update;
 
@@ -117,12 +112,9 @@ pub async fn get_wikijs_updates(
     let mut result = HashMap::new();
 
     for pag in &recent_pages {
-        let page = match response2.remove(&format!("q{}", pag.id.0)) {
-            Some(page) => page,
-            None => {
-                log::warn!("No `q{}` in response2", pag.id.0);
-                continue;
-            }
+        let Some(page) = response2.remove(&format!("q{}", pag.id.0)) else {
+            log::warn!("No `q{}` in response2", pag.id.0);
+            continue;
         };
 
         let last_version_id = page.history.trail.first().map(|x| x.version_id);
@@ -131,9 +123,8 @@ pub async fn get_wikijs_updates(
             last_version_id.unwrap_or(schema::VersionId(0));
         if update_state.pages.get(&pag.id) == Some(&last_version_id_for_state) {
             continue;
-        } else {
-            update_state.pages.insert(pag.id, last_version_id_for_state);
         }
+        update_state.pages.insert(pag.id, last_version_id_for_state);
 
         let mut actions = Vec::new();
         let mut authors = Vec::new();
@@ -224,7 +215,7 @@ pub async fn get_wikijs_updates(
         }
     };
 
-    for (page_id, res) in result.iter_mut() {
+    for (page_id, res) in &mut result {
         res.changes = match response3.prev.remove(&format!("q{}", page_id.0)) {
             Some(page) => diff_stat(&page.content, &res.current_page_contents),
             None => (res.current_page_contents.len(), 0),
@@ -255,7 +246,7 @@ pub async fn get_wikijs_updates(
                 ),
                 human_readable_join(x.authors.iter()),
                 match x.changes {
-                    (0, 0) => "".to_string(),
+                    (0, 0) => String::new(),
                     (0, del) => format!(" (-{del})"),
                     (add, 0) => format!(" (+{add})"),
                     (add, del) => format!(" (+{add}, -{del})"),
@@ -277,7 +268,7 @@ fn human_readable_join<S: AsRef<str>, I: ExactSizeIterator<Item = S>>(
             if len > 2 {
                 result.push_str(", ");
             } else {
-                result.push_str(" ");
+                result.push(' ');
             }
             if i == len - 1 {
                 result.push_str("and ");
@@ -293,7 +284,7 @@ fn humanize_action_type(action: &str) -> String {
         "initial" => "created".to_string(),
         "edit" => "edited".to_string(),
         "move" => "moved".to_string(),
-        other => format!("\"{}\"", other),
+        other => format!("\"{other}\""),
     }
 }
 

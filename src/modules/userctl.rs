@@ -42,11 +42,8 @@ async fn cmd_userctl(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-    cmd: UserctlCommand,
+    UserctlCommand::Userctl(args): UserctlCommand,
 ) -> Result<()> {
-    let args = match cmd {
-        UserctlCommand::Userctl(args) => args,
-    };
     let args = args.split_whitespace().collect::<Vec<_>>();
     let args = match UserctlArgs::from_args(&["/userctl"], &args) {
         Ok(args) => args,
@@ -88,7 +85,7 @@ async fn cmd_userctl(
         Ok(macs)
     })?;
 
-    bot.reply_message(&msg, format!("Updated: {:?}", updated_macs)).await?;
+    bot.reply_message(&msg, format!("Updated: {updated_macs:?}")).await?;
 
     Ok(())
 }
