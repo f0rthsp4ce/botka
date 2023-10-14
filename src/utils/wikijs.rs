@@ -418,7 +418,7 @@ mod test {
         assert_eq!(human_readable_join(["a", "b", "c"].iter()), "a, b, and c");
         assert_eq!(
             human_readable_join(["a", "b", "c", "d"].iter()),
-            "a, b, c and d"
+            "a, b, c, and d"
         );
     }
 }
