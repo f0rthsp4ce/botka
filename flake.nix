@@ -62,8 +62,10 @@
                 postgresqlSupport = false;
                 mysqlSupport = false;
               })
+              pkgs.just
               pkgs.mold
               pkgs.nixfmt
+              pkgs.nodePackages.prettier
               pkgs.perl
               pkgs.sqlite
             ];
