@@ -1,0 +1,60 @@
+# Configuration for the Telegram bot.
+telegram:
+  # Token provided by Telegram's BotFather for authentication.
+  token: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+
+  # The ID of the backup message channel for the debates module.
+  # Bot maintainer is supposed to create private channel and add bot into it.
+  forward_channel: -1001234567890
+
+  # List of chats considered as residents-only.
+  # FIXME: currently unused
+  # TODO: move to 'chats'.
+  residential_chats: [1234567890]
+
+  # List of threads for 'borrowed_items' module.
+  # TODO: move to 'chats'.
+  borrowed_items_threads:
+    - { chat: -1001234567890, thread: 123 }
+
+  # Configuration for specific chat threads.
+  chats:
+    # Chat to push Wiki.js update notifications.
+    wikijs_updates: { chat: -1001234567890, thread: 123 }
+
+# Database connection string. Only SQLite is supported.
+db: sqlite://path/to/db.sqlite
+
+# Path to the log file where updates will be written. For debug purposes.
+log_file: path/to/updates.jsonl
+
+# Address to to provide HTTP API on.
+server_addr: 127.0.0.1:8080
+
+# Configuration to access external services.
+services:
+  # Microtik REST API is used to get list of MAC addresses of the connected
+  # devices.
+  mikrotik:
+    host: 10.0.0.1
+    username: SECRET
+    password: SECRET
+
+  # Home Assistant configuration.
+  # FIXME: currently unused
+  home_assistant:
+    host: homeassistant.lo.f0rth.space
+    token: SECRET
+
+  # Wiki.js GraphQL API is used to monitor recent page updates.
+  wikijs:
+    url: https://wiki.f0rth.space
+    # Bearer token for authentication. Could be extracted from either browser
+    # console, or here: https://wiki.f0rth.space/a/api.
+    token: SECRET
+
+  # OpenAI API configuration.
+  openai:
+    api_key: SECRET
+    # Use stub logic instead of OpenAI API. Useful for local testing.
+    disable: false
