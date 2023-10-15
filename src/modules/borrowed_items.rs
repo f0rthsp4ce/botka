@@ -316,6 +316,9 @@ fn make_text(user: &User, items: &[models::BorrowedItem]) -> String {
                 text.push_str(", ");
             }
             _ => {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
                 text.push_str(&returned.format("%Y-%m-%d %H:%M").to_string());
                 text.push_str(": returned ");
                 prev_date = Some(returned);
@@ -384,3 +387,43 @@ If an user returned an item, respond with string `"R"`, but only if an user did 
 
 If a message does not contain any information about taking or returning items, respond with `null`.
 """#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::BorrowedItem;
+
+    #[test]
+    fn test_make_text() {
+        let item = |name: &str, minutes: Option<i64>| BorrowedItem {
+            name: name.to_string(),
+            returned: minutes
+                .map(|m| chrono::DateTime::from_timestamp(m * 60, 0).unwrap()),
+        };
+        let user = User {
+            id: UserId(1),
+            is_bot: false,
+            first_name: "John".to_string(),
+            last_name: None,
+            username: None,
+            language_code: None,
+            is_premium: false,
+            added_to_attachment_menu: false,
+        };
+        assert_eq!(
+            make_text(
+                &user,
+                &[item("hammer", Some(0)), item("screwdriver", Some(1))]
+            ),
+            "1970-01-01 00:00: returned hammer, screwdriver"
+        );
+        assert_eq!(
+            make_text(
+                &user,
+                &[item("hammer", Some(0)), item("screwdriver", Some(60))]
+            ),
+            "1970-01-01 00:00: returned hammer\n\
+            1970-01-01 01:00: returned screwdriver"
+        );
+    }
+}
