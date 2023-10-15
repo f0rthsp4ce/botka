@@ -3,9 +3,11 @@ use std::net::SocketAddr;
 
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use teloxide::types::{ChatId, ChatMember, UserId};
+use teloxide::types::{ChatId, ChatMember, ThreadId, UserId};
 
-use crate::db::{config_option_def, DbChatId, DbMessageId, DbUserId};
+use crate::db::{
+    config_option_def, DbChatId, DbMessageId, DbThreadId, DbUserId,
+};
 use crate::utils::Sqlizer;
 
 // Database models
@@ -94,7 +96,7 @@ pub struct ConfigOption {
 #[diesel(table_name = crate::schema::borrowed_items)]
 pub struct BorrowedItems {
     pub chat_id: DbChatId,
-    pub thread_id: i32,
+    pub thread_id: DbThreadId,
     pub user_message_id: DbMessageId,
     pub bot_message_id: DbMessageId,
     pub user_id: DbUserId,
@@ -139,7 +141,7 @@ pub struct TelegramConfig {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TelegramConfigThread {
     pub chat: ChatId,
-    pub thread: i32,
+    pub thread: ThreadId,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

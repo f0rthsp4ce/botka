@@ -9,7 +9,7 @@ use diesel::{
 use diesel_derive_newtype::DieselNewType;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use teloxide::types::{ChatId, MessageId, Recipient, UserId};
+use teloxide::types::{ChatId, MessageId, Recipient, ThreadId, UserId};
 
 use crate::{models, schema};
 
@@ -110,6 +110,7 @@ macro_rules! make_db_wrapper {
 make_db_wrapper!(DbUserId, i64);
 make_db_wrapper!(DbChatId, i64);
 make_db_wrapper!(DbMessageId, i32);
+make_db_wrapper!(DbThreadId, i32);
 
 impl From<UserId> for DbUserId {
     fn from(id: UserId) -> Self {
@@ -150,5 +151,17 @@ impl From<MessageId> for DbMessageId {
 impl From<DbMessageId> for MessageId {
     fn from(id: DbMessageId) -> Self {
         Self(id.0)
+    }
+}
+
+impl From<ThreadId> for DbThreadId {
+    fn from(id: ThreadId) -> Self {
+        Self(id.0 .0)
+    }
+}
+
+impl From<DbThreadId> for ThreadId {
+    fn from(id: DbThreadId) -> Self {
+        Self(MessageId(id.0))
     }
 }

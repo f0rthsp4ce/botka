@@ -39,7 +39,7 @@ async fn handle_message(
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
-    let Some(user) = msg.from() else { return Ok(()) };
+    let Some(user) = msg.from.as_ref() else { return Ok(()) };
     let Some(text) = textify_message(&msg) else { return Ok(()) };
     let item_names = match classify(env.clone(), &text).await? {
         ClassificationResult::Took(items) => items,
@@ -72,10 +72,10 @@ async fn handle_message(
         diesel::insert_into(schema::borrowed_items::table)
             .values(models::BorrowedItems {
                 chat_id: msg.chat.id.into(),
-                thread_id: msg.thread_id.unwrap(),
+                thread_id: msg.thread_id.unwrap().into(),
                 user_message_id: msg.id.into(),
                 bot_message_id: bot_message.id.into(),
-                user_id: msg.from().unwrap().id.into(),
+                user_id: msg.from.unwrap().id.into(),
                 items: Sqlizer::new(items).unwrap(),
             })
             .execute(conn)?;
@@ -133,7 +133,7 @@ async fn handle_callback(
             )
             .first(conn)?;
 
-        if callback.from.id != bi.user_id.into() {
+        if callback.from.id != UserId::from(bi.user_id) {
             return Ok(CallbackResponse::NotYourMessage);
         }
 
@@ -327,7 +327,7 @@ fn make_text(user: &User, items: &[models::BorrowedItem]) -> String {
         text.push_str(&html::escape(name));
     }
     if text.is_empty() {
-        text.push_str(&html::user_mention(user.id.0 as i64, &user.full_name()));
+        text.push_str(&html::user_mention(user.id, &user.full_name()));
         text.push_str(", press a button to mark an item as returned.");
     }
     text

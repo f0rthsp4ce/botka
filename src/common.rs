@@ -249,8 +249,7 @@ where
     } else if !rules.in_private && msg.chat.is_private() {
         Some("This command is not allowed in private chats")
     } else if rules.role != Role::User {
-        let user = msg.from()?;
-        let user_role = user_role(&mut env.conn(), user);
+        let user_role = user_role(&mut env.conn(), msg.from.as_ref()?);
         if user_role < rules.role {
             Some("You don't have enough permissions to execute this command")
         } else {

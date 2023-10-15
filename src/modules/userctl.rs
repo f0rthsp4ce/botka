@@ -44,6 +44,7 @@ async fn cmd_userctl(
     msg: Message,
     UserctlCommand::Userctl(args): UserctlCommand,
 ) -> Result<()> {
+    let Some(from) = &msg.from else { return Ok(()) };
     let args = args.split_whitespace().collect::<Vec<_>>();
     let args = match UserctlArgs::from_args(&["/userctl"], &args) {
         Ok(args) => args,
@@ -53,8 +54,7 @@ async fn cmd_userctl(
         }
     };
 
-    let tg_id = DbUserId::from(msg.from().unwrap().id);
-
+    let tg_id = DbUserId::from(from.id);
     let updated_macs = env.transaction(|conn| {
         diesel::delete(crate::schema::user_macs::table)
             .filter(crate::schema::user_macs::tg_id.eq(tg_id))

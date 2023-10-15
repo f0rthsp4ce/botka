@@ -106,7 +106,7 @@ impl<'a> ScrapedInfo<'a> {
     }
 
     fn scrape_message(&mut self, msg: &'a Message) {
-        if let Some(from) = msg.from() {
+        if let Some(from) = &msg.from {
             self.scrape_user(from);
             self.user_in_chat = Some(models::NewTgUserInChat {
                 chat_id: msg.chat.id.into(),

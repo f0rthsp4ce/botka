@@ -30,10 +30,15 @@ serde = "1.0.188"
 serde_json = "1.0.107"
 serde_yaml = "0.9.25"
 similar = "2.2.1"
-teloxide = { version = "0.12.2", features = ["macros"] }
 tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros"] }
 tokio-util = "0.7.9"
 try_match = { version = "0.4.1", default-features = false }
+
+[dependencies.teloxide]
+# TODO: switch back to upstream once merged and released
+git = "https://github.com/tar-xzf/teloxide"
+rev="f22575f6127d47329a972ca27d3ad47df0eb4ec2"
+features = ["macros"]
 
 [dependencies.openssl-sys]
 version = "*"

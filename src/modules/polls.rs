@@ -56,7 +56,7 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
                 // Bots can't obtain information from quiz polls, so skip them
                 && poll.poll_type == teloxide::types::PollType::Regular
                 // Allow only residents
-                && user_role(&mut env.conn(), msg.from()?) >= Role::Resident =>
+                && user_role(&mut env.conn(), msg.from.as_ref()?) >= Role::Resident =>
         {
             Some(PollKind::New(poll.clone()))
         }
@@ -64,7 +64,8 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
             from: ForwardedFrom::User(User { id, .. }), ..
         }) if id == &me.user.id
             && msg.chat.is_private()
-            && user_role(&mut env.conn(), msg.from()?) >= Role::Resident =>
+            && user_role(&mut env.conn(), msg.from.as_ref()?)
+                >= Role::Resident =>
         {
             Some(PollKind::Forward(poll.id.clone()))
         }
@@ -132,13 +133,14 @@ async fn intercept_new_poll(
 
     let non_voters = db_find_non_voters(&mut env.conn(), &[]);
 
-    // TODO: cleanup this mess
-    let creator_id = msg.from().unwrap().id.into();
+    // TODO: clean up this
+    let from = msg.from.as_ref().unwrap();
+    let creator_id = from.id.into();
     let creator_info = models::TgUser {
         id: creator_id,
-        username: msg.from().unwrap().username.clone(),
-        first_name: msg.from().unwrap().first_name.clone(),
-        last_name: msg.from().unwrap().last_name.clone(),
+        username: from.username.clone(),
+        first_name: from.first_name.clone(),
+        last_name: from.last_name.clone(),
     };
 
     let poll_info = bot
@@ -303,7 +305,7 @@ async fn handle_callback(
         return Ok(());
     };
 
-    if callback.from.id != db_poll.creator_id.into() {
+    if callback.from.id != UserId::from(db_poll.creator_id) {
         bot.answer_callback_query(&callback.id)
             .text("You are not the creator of this poll.")
             .await?;
