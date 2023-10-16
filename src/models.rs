@@ -48,17 +48,6 @@ pub struct NewTgUserInChat {
     pub seen: bool,
 }
 
-#[derive(Clone, Debug, Insertable, AsChangeset)]
-#[diesel(table_name = crate::schema::tg_chat_topics)]
-pub struct NewTgChatTopic<'a> {
-    pub chat_id: DbChatId,
-    pub topic_id: DbThreadId,
-    pub closed: Option<bool>,
-    pub name: Option<&'a str>,
-    pub icon_color: Option<i32>,
-    pub icon_custom_emoji_id: Option<&'a str>,
-}
-
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::residents)]
 pub struct Resident {

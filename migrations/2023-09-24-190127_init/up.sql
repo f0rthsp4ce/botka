@@ -27,7 +27,11 @@ CREATE TABLE tg_chat_topics (
   closed BOOLEAN,
   name TEXT,
   icon_color INTEGER,
-  icon_custom_emoji_id TEXT,
+  icon_emoji TEXT,
+  -- Last seen message id for each field
+  id_closed INTEGER NOT NULL,
+  id_name INTEGER NOT NULL,
+  id_icon_emoji INTEGER NOT NULL,
   PRIMARY KEY (chat_id, topic_id)
 );
 

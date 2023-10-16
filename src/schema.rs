@@ -43,7 +43,10 @@ diesel::table! {
         closed -> Nullable<Bool>,
         name -> Nullable<Text>,
         icon_color -> Nullable<Integer>,
-        icon_custom_emoji_id -> Nullable<Text>,
+        icon_emoji -> Nullable<Text>,
+        id_closed -> Integer,
+        id_name -> Integer,
+        id_icon_emoji -> Integer,
     }
 }
 
