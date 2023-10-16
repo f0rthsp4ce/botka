@@ -37,6 +37,17 @@ diesel::table! {
 }
 
 diesel::table! {
+    tg_chat_topics (chat_id, topic_id) {
+        chat_id -> BigInt,
+        topic_id -> Integer,
+        closed -> Nullable<Bool>,
+        name -> Nullable<Text>,
+        icon_color -> Nullable<Integer>,
+        icon_custom_emoji_id -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     tg_chats (id) {
         id -> BigInt,
         kind -> Text,
@@ -87,6 +98,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     forwards,
     options,
     residents,
+    tg_chat_topics,
     tg_chats,
     tg_users,
     tg_users_in_chats,

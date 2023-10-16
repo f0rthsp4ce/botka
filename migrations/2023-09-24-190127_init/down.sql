@@ -2,6 +2,7 @@ DROP TABLE IF EXISTS residents;
 DROP TABLE IF EXISTS tg_users;
 DROP TABLE IF EXISTS tg_chats;
 DROP TABLE IF EXISTS tg_users_in_chats;
+DROP TABLE IF EXISTS tg_chat_topics;
 DROP TABLE IF EXISTS forwards;
 DROP TABLE IF EXISTS options;
 DROP TABLE IF EXISTS user_macs;

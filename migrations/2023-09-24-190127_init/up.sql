@@ -20,6 +20,17 @@ CREATE TABLE tg_users_in_chats (
   PRIMARY KEY (chat_id, user_id)
 );
 
+CREATE TABLE tg_chat_topics (
+  chat_id BIGINT NOT NULL /* REFERENCES tg_chats(id) */,
+  topic_id INTEGER NOT NULL,
+  -- Following fields might be NULL if bot missed the update
+  closed BOOLEAN,
+  name TEXT,
+  icon_color INTEGER,
+  icon_custom_emoji_id TEXT,
+  PRIMARY KEY (chat_id, topic_id)
+);
+
 CREATE TABLE residents (
   tg_id BIGINT PRIMARY KEY NOT NULL /* REFERENCES tg_users(id) */,
   is_resident BOOLEAN NOT NULL DEFAULT FALSE,
