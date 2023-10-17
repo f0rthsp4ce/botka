@@ -362,7 +362,7 @@ fn balance_columns<T>(
     let mut result = vec![];
     for irow in 0..rows {
         let mut row = Vec::new();
-        for _ in 0..(columns + (irow < rows_with_extra_columns) as usize) {
+        for _ in 0..(columns + usize::from(irow < rows_with_extra_columns)) {
             row.push(it.next().expect(""));
         }
         result.push(row);

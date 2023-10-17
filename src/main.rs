@@ -6,9 +6,6 @@
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::redundant_closure_for_method_calls)]
 // FIXME: fix these
-#![allow(clippy::cast_lossless)]
-#![allow(clippy::cast_possible_wrap)]
-#![allow(clippy::cast_sign_loss)]
 #![allow(clippy::too_many_lines)]
 
 use std::fs::File;

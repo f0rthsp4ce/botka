@@ -115,13 +115,13 @@ make_db_wrapper!(DbThreadId, i32);
 
 impl From<UserId> for DbUserId {
     fn from(id: UserId) -> Self {
-        Self(id.0 as i64)
+        Self(id.0.try_into().expect("UserId is too big"))
     }
 }
 
 impl From<DbUserId> for UserId {
     fn from(id: DbUserId) -> Self {
-        Self(id.0 as u64)
+        Self(id.0.try_into().expect("DbUserId is too big"))
     }
 }
 
