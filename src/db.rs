@@ -99,6 +99,7 @@ macro_rules! make_db_wrapper {
             PartialEq,
             Ord,
             PartialOrd,
+            Hash,
             Serialize,
             Deserialize,
             DieselNewType,

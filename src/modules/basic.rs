@@ -1,18 +1,22 @@
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use diesel::prelude::*;
+use itertools::Itertools;
 use macro_rules_attribute::derive;
 use teloxide::prelude::*;
+use teloxide::types::{StickerKind, ThreadId};
 use teloxide::utils::command::BotCommands;
+use teloxide::utils::html;
 
 use crate::common::{
     filter_command, format_users, format_users2, BotEnv, CommandHandler,
     MyDialogue, State,
 };
-use crate::db::DbUserId;
+use crate::db::{DbChatId, DbUserId};
 use crate::utils::BotExt;
 use crate::{models, schema, HasCommandRules};
 
@@ -30,6 +34,10 @@ enum Command {
 
     #[command(description = "show status.")]
     Status,
+
+    #[command(description = "show topic list")]
+    #[custom(in_group = false)]
+    Topics,
 
     #[command(description = "show bot version.")]
     Version,
@@ -57,6 +65,7 @@ async fn start<'a>(
         Command::Version => {
             bot.reply_message(&msg, crate::VERSION).await?;
         }
+        Command::Topics => cmd_topics(bot, env, msg).await?,
     }
     Ok(())
 }
@@ -146,4 +155,112 @@ async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
         .await?;
 
     Ok(())
+}
+
+async fn cmd_topics(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
+    let Some(user) = &msg.from else { return Ok(()) };
+
+    let user_chats = schema::tg_users_in_chats::table
+        .filter(schema::tg_users_in_chats::user_id.eq(DbUserId::from(user.id)))
+        .select(schema::tg_users_in_chats::chat_id)
+        .load::<DbChatId>(&mut *env.conn())?;
+
+    if user_chats.is_empty() {
+        bot.reply_message(&msg, "You are not in any tracked chats.").await?;
+        return Ok(());
+    }
+
+    let topics: Vec<models::TgChatTopic> = schema::tg_chat_topics::table
+        .filter(schema::tg_chat_topics::chat_id.eq_any(user_chats))
+        .select(schema::tg_chat_topics::all_columns)
+        .load(&mut *env.conn())?;
+
+    if topics.is_empty() {
+        bot.reply_message(&msg, "No topics in your chats.").await?;
+        return Ok(());
+    }
+
+    let mut emojis = topics
+        .iter()
+        .filter_map(|t| t.icon_emoji.as_ref())
+        .filter(|i| !i.is_empty())
+        .cloned()
+        .collect_vec();
+    emojis.sort();
+    emojis.dedup();
+
+    let emojis = bot
+        .get_custom_emoji_stickers(emojis)
+        .await?
+        .into_iter()
+        .filter_map(|e| {
+            let StickerKind::CustomEmoji { custom_emoji_id } = e.kind else {
+                return None;
+            };
+            Some((custom_emoji_id, e.emoji?))
+        })
+        .collect::<HashMap<_, _>>();
+
+    let mut chats = HashMap::new();
+    for topic in &topics {
+        chats.entry(topic.chat_id).or_insert_with(Vec::new).push(topic);
+    }
+
+    let mut text = String::new();
+    for (chat_id, topics) in chats {
+        let chat: models::TgChat = schema::tg_chats::table
+            .filter(schema::tg_chats::id.eq(chat_id))
+            .first(&mut *env.conn())?;
+        writeln!(
+            &mut text,
+            "<b>{}</b>",
+            chat.title.as_ref().map_or(String::new(), |t| html::escape(t))
+        )
+        .unwrap();
+
+        for topic in topics {
+            render_topic_link(&mut text, &emojis, topic);
+        }
+        text.push('\n');
+    }
+
+    bot.reply_message(&msg, text)
+        .parse_mode(teloxide::types::ParseMode::Html)
+        .disable_web_page_preview(true)
+        .await?;
+
+    Ok(())
+}
+
+fn render_topic_link(
+    out: &mut String,
+    emojis: &HashMap<String, String>,
+    topic: &models::TgChatTopic,
+) {
+    write!(
+        out,
+        "<a href=\"https://t.me/c/{}/{}\">",
+        -ChatId::from(topic.chat_id).0 - 1_000_000_000_000,
+        ThreadId::from(topic.topic_id),
+    )
+    .unwrap();
+
+    out.push_str(
+        topic
+            .icon_emoji
+            .as_ref()
+            .and_then(|e| emojis.get(e))
+            .map_or("💬", |e| e.as_str()),
+    );
+    out.push(' ');
+
+    if let Some(name) = &topic.name {
+        out.push_str(&html::escape(name));
+    } else {
+        write!(out, "Topic #{}", ThreadId::from(topic.topic_id)).unwrap();
+    }
+
+    out.push_str("</a>");
+
+    out.push('\n');
 }

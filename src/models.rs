@@ -30,6 +30,15 @@ pub struct NewTgUser<'a> {
     pub last_name: Option<&'a str>,
 }
 
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = crate::schema::tg_chats)]
+pub struct TgChat {
+    pub id: DbChatId,
+    pub kind: String,
+    pub username: Option<String>,
+    pub title: Option<String>,
+}
+
 #[derive(Insertable)]
 #[diesel(table_name = crate::schema::tg_chats)]
 pub struct NewTgChat<'a> {
@@ -46,6 +55,20 @@ pub struct NewTgUserInChat {
     pub user_id: DbUserId,
     pub chat_member: Option<Sqlizer<ChatMember>>,
     pub seen: bool,
+}
+
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = crate::schema::tg_chat_topics)]
+pub struct TgChatTopic {
+    pub chat_id: DbChatId,
+    pub topic_id: DbThreadId,
+    pub closed: Option<bool>,
+    pub name: Option<String>,
+    pub icon_color: Option<i32>,
+    pub icon_emoji: Option<String>,
+    pub id_closed: DbMessageId,
+    pub id_name: DbMessageId,
+    pub id_icon_emoji: DbMessageId,
 }
 
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]
