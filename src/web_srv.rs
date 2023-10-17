@@ -7,6 +7,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use diesel::prelude::*;
 use itertools::Itertools;
+use tokio_util::sync::CancellationToken;
 
 use crate::db::DbUserId;
 use crate::{models, schema};
@@ -15,13 +16,22 @@ struct AppState {
     conn: Mutex<SqliteConnection>,
 }
 
-pub async fn run(conn: SqliteConnection, addr: SocketAddr) {
+pub async fn run(
+    conn: SqliteConnection,
+    addr: SocketAddr,
+    cancel: CancellationToken,
+) {
     let app_state = Arc::new(AppState { conn: Mutex::new(conn) });
 
     let app = Router::new()
         .route("/residents/v0", get(residents_v0))
         .with_state(app_state);
-    axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
+
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .with_graceful_shutdown(cancel.cancelled())
+        .await
+        .unwrap();
 }
 
 async fn residents_v0(

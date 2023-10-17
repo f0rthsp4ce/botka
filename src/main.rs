@@ -126,6 +126,7 @@ async fn run_bot(config_fpath: &str) -> Result<()> {
     join_handles.push(tokio::spawn(web_srv::run(
         SqliteConnection::establish(&bot_env.config.db)?,
         bot_env.config.server_addr,
+        cancel.clone(),
     )));
 
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());
