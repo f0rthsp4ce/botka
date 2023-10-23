@@ -74,9 +74,10 @@ pub struct TgChatTopic {
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::residents)]
 pub struct Resident {
+    pub rowid: i32,
     pub tg_id: DbUserId,
-    pub is_resident: bool,
-    pub is_bot_admin: bool,
+    pub begin_date: chrono::NaiveDateTime,
+    pub end_date: Option<chrono::NaiveDateTime>,
 }
 
 #[derive(Insertable, Queryable, Selectable)]
@@ -156,6 +157,7 @@ pub struct Config {
 pub struct TelegramConfig {
     pub token: String,
     pub forward_channel: ChatId,
+    pub admins: Vec<UserId>,
     pub residential_chats: Vec<ChatId>,
     pub borrowed_items_threads: Vec<TelegramConfigThread>,
     pub chats: TelegramConfigChats,

@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -5,12 +6,13 @@ use diesel::prelude::*;
 use macro_rules_attribute::derive;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
+use teloxide::utils::html;
 use teloxide::RequestError;
 
 use crate::common::{
-    filter_command, format_users, BotEnv, CommandHandler, MyDialogue, Role,
-    State,
+    filter_command, format_users, BotEnv, CommandHandler, MyDialogue, State,
 };
+use crate::db::DbUserId;
 use crate::utils::BotExt;
 use crate::HasCommandRules;
 
@@ -19,19 +21,19 @@ use crate::HasCommandRules;
 #[allow(clippy::enum_variant_names)]
 enum DebateCommand {
     #[command(description = "send debate message.")]
-    #[custom(in_group = false, role = Role::Resident)]
+    #[custom(in_group = false, resident = true)]
     DebateSend,
 
     #[command(description = "debate status.")]
-    #[custom(role = Role::Resident)]
+    #[custom(resident = true)]
     DebateStatus,
 
     #[command(description = "start debate.")]
-    #[custom(in_private = false, role = Role::Admin)]
+    #[custom(in_private = false, admin = true)]
     DebateStart(String),
 
     #[command(description = "end debate.")]
-    #[custom(in_private = false, role = Role::Admin)]
+    #[custom(in_private = false, admin = true)]
     DebateEnd,
 }
 
@@ -103,7 +105,12 @@ async fn cmd_debate_status<'a>(
 ) -> Result<()> {
     let result = env.transaction(|conn| {
         if let Some(debate) = crate::models::debate.get(conn)? {
-            let messages = crate::schema::residents::table
+            let messages: Vec<(
+                DbUserId,
+                Option<crate::models::Forward>,
+                Option<crate::models::TgUser>,
+            )> = crate::schema::residents::table
+                .filter(crate::schema::residents::end_date.is_null())
                 .left_join(
                     crate::schema::forwards::table
                         .on(crate::schema::forwards::columns::orig_chat_id
@@ -114,11 +121,12 @@ async fn cmd_debate_status<'a>(
                         .on(crate::schema::tg_users::columns::id
                             .eq(crate::schema::residents::columns::tg_id)),
                 )
-                .load::<(
-                    crate::models::Resident,
-                    Option<crate::models::Forward>,
-                    Option<crate::models::TgUser>,
-                )>(conn)?;
+                .select((
+                    crate::schema::residents::tg_id,
+                    crate::schema::forwards::all_columns.nullable(),
+                    crate::schema::tg_users::all_columns.nullable(),
+                ))
+                .load(conn)?;
             Ok(Some((debate, messages)))
         } else {
             Ok(None)
@@ -127,17 +135,15 @@ async fn cmd_debate_status<'a>(
 
     fn mk_iter(
         messages: &[(
-            crate::models::Resident,
+            DbUserId,
             Option<crate::models::Forward>,
             Option<crate::models::TgUser>,
         )],
         has_forward: bool,
-    ) -> impl Iterator<
-        Item = (&crate::models::Resident, &Option<crate::models::TgUser>),
-    > {
-        messages.iter().filter_map(move |(resident, forward, tg_user)| {
+    ) -> impl Iterator<Item = (DbUserId, &Option<crate::models::TgUser>)> {
+        messages.iter().filter_map(move |(resident_id, forward, tg_user)| {
             if forward.is_some() == has_forward {
-                Some((resident, tg_user))
+                Some((*resident_id, tg_user))
             } else {
                 None
             }
@@ -146,26 +152,26 @@ async fn cmd_debate_status<'a>(
 
     let text = if let Some((debate, messages)) = result {
         let mut text = String::new();
-        text.push_str(
-            format!("Debate started at {}.\n", debate.started_at).as_str(),
-        );
-        text.push_str(
-            format!("Description: {}.\n\n", debate.description).as_str(),
-        );
+        writeln!(text, "Debate started at {}.", debate.started_at).unwrap();
+        write!(text, "Description: {}.\n\n", html::escape(&debate.description))
+            .unwrap();
 
         text.push_str("🗳 Sent message: ");
-        text.push_str(format_users(mk_iter(&messages, true)).as_str());
+        format_users(&mut text, mk_iter(&messages, true));
         text.push_str(".\n\n");
 
         text.push_str("🕐 Not yet sent message: ");
-        text.push_str(format_users(mk_iter(&messages, false)).as_str());
+        format_users(&mut text, mk_iter(&messages, false));
         text.push('.');
         text
     } else {
         "Debate not started yet.".to_string()
     };
 
-    bot.reply_message(&msg, text).await?;
+    bot.reply_message(&msg, text)
+        .parse_mode(teloxide::types::ParseMode::Html)
+        .disable_web_page_preview(true)
+        .await?;
 
     Ok(())
 }

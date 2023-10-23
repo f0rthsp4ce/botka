@@ -38,12 +38,11 @@ async fn residents_v0(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<Vec<models::DataResident>>) {
     let residents: Vec<(DbUserId, models::TgUser)> = schema::residents::table
-        .filter(schema::residents::is_resident.eq(true))
+        .filter(schema::residents::end_date.is_null())
         .inner_join(
             schema::tg_users::table
                 .on(schema::residents::tg_id.eq(schema::tg_users::id)),
         )
-        .filter(schema::residents::is_resident.eq(true))
         .order(schema::residents::tg_id.asc())
         .select((schema::residents::tg_id, schema::tg_users::all_columns))
         .load(&mut *state.conn.lock().unwrap())

@@ -36,9 +36,10 @@ CREATE TABLE tg_chat_topics (
 );
 
 CREATE TABLE residents (
-  tg_id BIGINT PRIMARY KEY NOT NULL /* REFERENCES tg_users(id) */,
-  is_resident BOOLEAN NOT NULL DEFAULT FALSE,
-  is_bot_admin BOOLEAN NOT NULL DEFAULT FALSE
+  rowid INTEGER PRIMARY KEY NOT NULL, -- Needed for diesel
+  tg_id BIGINT NOT NULL /* REFERENCES tg_users(id) */,
+  begin_date DATETIME NOT NULL,
+  end_date DATETIME -- NULL means "current resident"
 );
 
 CREATE TABLE user_macs (

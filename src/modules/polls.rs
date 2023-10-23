@@ -11,7 +11,7 @@ use teloxide::types::{
 };
 
 use crate::common::{
-    format_user2, format_users2, user_role, BotEnv, CommandHandler, Role,
+    format_user, format_users, is_resident, BotEnv, CommandHandler,
 };
 use crate::db::DbUserId;
 use crate::utils::{BotExt, ResultExt, Sqlizer};
@@ -56,7 +56,7 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
                 // Bots can't obtain information from quiz polls, so skip them
                 && poll.poll_type == teloxide::types::PollType::Regular
                 // Allow only residents
-                && user_role(&mut env.conn(), msg.from.as_ref()?) >= Role::Resident =>
+                && is_resident(&mut env.conn(), msg.from.as_ref()?) =>
         {
             Some(PollKind::New(poll.clone()))
         }
@@ -64,8 +64,7 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
             from: ForwardedFrom::User(User { id, .. }), ..
         }) if id == &me.user.id
             && msg.chat.is_private()
-            && user_role(&mut env.conn(), msg.from.as_ref()?)
-                >= Role::Resident =>
+            && is_resident(&mut env.conn(), msg.from.as_ref()?) =>
         {
             Some(PollKind::Forward(poll.id.clone()))
         }
@@ -364,7 +363,7 @@ fn poll_text(
     let mut text = String::new();
 
     text.push_str("Poll by ");
-    format_user2(&mut text, creator.0, &creator.1);
+    format_user(&mut text, creator.0, &creator.1);
     text.push_str(". ");
 
     if non_voters.is_empty() {
@@ -379,7 +378,7 @@ fn poll_text(
             if non_voters.len() == 1 { "" } else { "s" },
         )
         .unwrap();
-        format_users2(&mut text, non_voters.iter().map(|(id, u)| (*id, u)));
+        format_users(&mut text, non_voters.iter().map(|(id, u)| (*id, u)));
         text.push_str(".\n");
     }
 
@@ -427,8 +426,10 @@ fn db_find_non_voters(
     conn: &mut SqliteConnection,
     voted_users: &[DbUserId],
 ) -> Result<Vec<(DbUserId, Option<models::TgUser>)>, diesel::result::Error> {
+    // TODO: filter only residents at the moment of poll creation
     schema::residents::table
         .filter(schema::residents::tg_id.ne_all(voted_users))
+        .filter(schema::residents::end_date.is_null())
         .left_join(
             schema::tg_users::table
                 .on(schema::residents::tg_id.eq(schema::tg_users::id)),

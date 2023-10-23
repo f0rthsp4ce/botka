@@ -2,8 +2,7 @@ use std::fmt::Write;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, QueryResult, RunQueryDsl,
-    SqliteConnection,
+    ExpressionMethods, QueryDsl, QueryResult, RunQueryDsl, SqliteConnection,
 };
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::DpHandlerDescription;
@@ -14,7 +13,6 @@ use teloxide::utils::html::escape;
 use teloxide::Bot;
 
 use crate::db::DbUserId;
-use crate::models::Resident;
 use crate::utils::BotExt;
 
 pub type CommandHandler<Output> = dptree::Handler<
@@ -35,26 +33,21 @@ pub type MyDialogue = Dialogue<State, InMemStorage<State>>;
 
 /// Rules describing where and who can execute a command.
 #[derive(Eq, PartialEq, Debug)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct CommandRules {
-    /// Required minimal role to execute this command
-    pub role: Role,
+    /// Require an user to be a bot admin to execute this command
+    pub admin: bool,
+    /// Require an user to be a resident to execute this command
+    pub resident: bool,
     /// Allow users to execute this command in private chat with bot
     pub in_private: bool,
     /// Allow users to execute this command in group chat
     pub in_group: bool,
 }
 
-#[derive(Eq, PartialEq, Debug, Default, Copy, Clone, Ord, PartialOrd)]
-pub enum Role {
-    #[default]
-    User,
-    Resident,
-    Admin,
-}
-
 impl Default for CommandRules {
     fn default() -> Self {
-        Self { role: Role::User, in_private: true, in_group: true }
+        Self { admin: false, resident: false, in_private: true, in_group: true }
     }
 }
 
@@ -144,27 +137,6 @@ macro_rules! HasCommandRules {
 }
 
 pub fn format_users<'a>(
-    iter: impl Iterator<
-        Item = (&'a crate::models::Resident, &'a Option<crate::models::TgUser>),
-    >,
-) -> String {
-    let mut text = String::new();
-    let mut first = true;
-    for (resident, user) in iter {
-        if first {
-            first = false;
-        } else {
-            text.push_str(", ");
-        }
-        text.push_str(format_user(resident.tg_id, user).as_str());
-    }
-    if first {
-        text.push_str("(no one)");
-    }
-    text
-}
-
-pub fn format_users2<'a>(
     out: &mut String,
     iter: impl Iterator<Item = (DbUserId, &'a Option<crate::models::TgUser>)>,
 ) {
@@ -175,29 +147,14 @@ pub fn format_users2<'a>(
         } else {
             out.push_str(", ");
         }
-        format_user2(out, tg_id, user);
+        format_user(out, tg_id, user);
     }
     if first {
         out.push_str("(no one)");
     }
 }
 
-fn format_user(
-    tg_id: DbUserId,
-    user: &Option<crate::models::TgUser>,
-) -> String {
-    match user {
-        None => {
-            format!("id={} (unknown)", UserId::from(tg_id).0)
-        }
-        Some(crate::models::TgUser { username: Some(username), .. }) => {
-            format!("@{username}")
-        }
-        Some(crate::models::TgUser { first_name, .. }) => first_name.clone(),
-    }
-}
-
-pub fn format_user2(
+pub fn format_user(
     out: &mut String,
     tg_id: DbUserId,
     user: &Option<crate::models::TgUser>,
@@ -248,13 +205,14 @@ where
         Some("This command is not allowed in group chats")
     } else if !rules.in_private && msg.chat.is_private() {
         Some("This command is not allowed in private chats")
-    } else if rules.role != Role::User {
-        let user_role = user_role(&mut env.conn(), msg.from.as_ref()?);
-        if user_role < rules.role {
-            Some("You don't have enough permissions to execute this command")
-        } else {
-            None
-        }
+    } else if rules.admin
+        && !env.config.telegram.admins.contains(&msg.from.as_ref()?.id)
+    {
+        Some("You must be an admin to execute this command")
+    } else if rules.resident
+        && !is_resident(&mut env.conn(), msg.from.as_ref()?)
+    {
+        Some("You must be a resident to execute this command")
     } else {
         None
     };
@@ -267,18 +225,15 @@ where
     Some(cmd)
 }
 
-pub fn user_role(conn: &mut SqliteConnection, user: &User) -> Role {
-    let resident: Option<Resident> = crate::schema::residents::table
+pub fn is_resident(conn: &mut SqliteConnection, user: &User) -> bool {
+    crate::schema::residents::table
+        .filter(crate::schema::residents::end_date.is_null())
         .filter(crate::schema::residents::tg_id.eq(DbUserId::from(user.id)))
-        .first::<Resident>(conn)
-        .optional()
+        .count()
+        .get_result::<i64>(conn)
         .ok()
-        .flatten();
-    match resident {
-        Some(Resident { is_bot_admin: true, .. }) => Role::Admin,
-        Some(Resident { is_resident: true, .. }) => Role::Resident,
-        _ => Role::User,
-    }
+        .unwrap_or(0)
+        > 0
 }
 
 #[cfg(test)]
@@ -294,11 +249,11 @@ mod tests {
         #[doc = "Variant 2"]
         WithDoc,
 
-        #[custom(role = Role::Resident)]
+        #[custom(resident = true)]
         WithCustom,
 
         #[doc = "Variant 4"]
-        #[custom(role = Role::Admin)]
+        #[custom(admin = true)]
         WithDocAndCustom,
 
         #[custom(in_private = true, in_group = true)]
@@ -314,11 +269,11 @@ mod tests {
         assert_eq!(MyCommand::WithDoc.command_rules(), CommandRules::default());
         assert_eq!(
             MyCommand::WithCustom.command_rules(),
-            CommandRules { role: Role::Resident, ..Default::default() }
+            CommandRules { resident: true, ..Default::default() }
         );
         assert_eq!(
             MyCommand::WithDocAndCustom.command_rules(),
-            CommandRules { role: Role::Admin, ..Default::default() }
+            CommandRules { admin: true, ..Default::default() }
         );
         assert_eq!(
             MyCommand::WithArgsAndCustom(1, 2).command_rules(),

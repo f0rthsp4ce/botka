@@ -29,10 +29,11 @@ diesel::table! {
 }
 
 diesel::table! {
-    residents (tg_id) {
+    residents (rowid) {
+        rowid -> Integer,
         tg_id -> BigInt,
-        is_resident -> Bool,
-        is_bot_admin -> Bool,
+        begin_date -> Timestamp,
+        end_date -> Nullable<Timestamp>,
     }
 }
 

@@ -7,6 +7,9 @@ telegram:
   # Bot maintainer is supposed to create private channel and add bot into it.
   forward_channel: -1001234567890
 
+  # Bot administrators
+  admins: [1234567890]
+
   # List of chats considered as residents-only.
   # FIXME: currently unused
   # TODO: move to 'chats'.

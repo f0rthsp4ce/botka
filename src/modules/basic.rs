@@ -13,8 +13,7 @@ use teloxide::utils::command::BotCommands;
 use teloxide::utils::html;
 
 use crate::common::{
-    filter_command, format_users, format_users2, BotEnv, CommandHandler,
-    MyDialogue, State,
+    filter_command, format_users, BotEnv, CommandHandler, MyDialogue, State,
 };
 use crate::db::{DbChatId, DbUserId};
 use crate::utils::BotExt;
@@ -75,21 +74,28 @@ async fn cmd_list_residents<'a>(
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
-    let residents = schema::residents::table
-        .filter(schema::residents::is_resident.eq(true))
-        .left_join(
-            schema::tg_users::table
-                .on(schema::residents::tg_id.eq(schema::tg_users::id)),
-        )
-        .order(schema::residents::tg_id.asc())
-        .load::<(models::Resident, Option<models::TgUser>)>(&mut *env.conn())
-        .unwrap();
+    let residents: Vec<(DbUserId, Option<models::TgUser>)> =
+        schema::residents::table
+            .filter(schema::residents::end_date.is_null())
+            .left_join(
+                schema::tg_users::table
+                    .on(schema::residents::tg_id.eq(schema::tg_users::id)),
+            )
+            .select((
+                schema::residents::tg_id,
+                schema::tg_users::all_columns.nullable(),
+            ))
+            .order(schema::residents::tg_id.asc())
+            .load(&mut *env.conn())?;
     let mut text = String::new();
 
     text.push_str("Residents: ");
-    text.push_str(&format_users(residents.iter().map(|(r, u)| (r, u))));
+    format_users(&mut text, residents.iter().map(|(r, u)| (*r, u)));
     text.push('.');
-    bot.reply_message(&msg, text).await?;
+    bot.reply_message(&msg, text)
+        .parse_mode(teloxide::types::ParseMode::Html)
+        .disable_web_page_preview(true)
+        .await?;
     Ok(())
 }
 
@@ -142,7 +148,7 @@ async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
                     .distinct()
                     .load(&mut *env.conn())?;
             writeln!(&mut text, "Currently in space: ").unwrap();
-            format_users2(&mut text, data.iter().map(|(id, u)| (*id, u)));
+            format_users(&mut text, data.iter().map(|(id, u)| (*id, u)));
         }
         Err(e) => {
             log::error!("Failed to get leases: {}", e);
