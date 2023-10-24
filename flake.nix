@@ -30,6 +30,7 @@
             # rust-src is required for rust-analyzer
             extensions = [ "rust-src" ];
           };
+          runtimeDeps = [ pkgs.hello pkgs.bash ];
         in rec {
           formatter = pkgs.nixfmt;
           packages.default = packages.f0bot;
@@ -42,6 +43,12 @@
             };
             nativeBuildInputs = [ pkgs.perl ];
           };
+
+          packages.f0botWithDeps = pkgs.writeScriptBin "f0bot" ''
+            #!${pkgs.stdenv.shell}
+            export PATH=${pkgs.lib.makeBinPath runtimeDeps}:$PATH
+            exec ${packages.f0bot}/bin/f0bot "$@"
+          '';
 
           packages.image = pkgs.dockerTools.buildImage {
             name = "f0bot";
@@ -69,7 +76,7 @@
               pkgs.nodePackages.prettier
               pkgs.perl
               pkgs.sqlite
-            ];
+            ] ++ runtimeDeps;
           };
         };
     };

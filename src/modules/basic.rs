@@ -38,6 +38,9 @@ enum Command {
     #[custom(in_group = false)]
     Topics,
 
+    #[command(description = "run GNU hello.")]
+    Hello(String),
+
     #[command(description = "show bot version.")]
     Version,
 }
@@ -65,6 +68,7 @@ async fn start<'a>(
             bot.reply_message(&msg, crate::VERSION).await?;
         }
         Command::Topics => cmd_topics(bot, env, msg).await?,
+        Command::Hello(args) => cmd_hello(bot, msg, &args).await?,
     }
     Ok(())
 }
@@ -160,6 +164,35 @@ async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
         .disable_web_page_preview(true)
         .await?;
 
+    Ok(())
+}
+
+async fn cmd_hello(bot: Bot, msg: Message, args: &str) -> Result<()> {
+    let Some(args) = shlex::split(args) else {
+        bot.reply_message(&msg, "sh: syntax error").await?;
+        return Ok(());
+    };
+    match std::process::Command::new("sh")
+        .arg("-c")
+        .arg("exec hello \"${@}\" 2>&1")
+        .arg("sh")
+        .args(args)
+        .stderr(std::process::Stdio::inherit())
+        .output()
+    {
+        Ok(x) => {
+            bot.reply_message(
+                &msg,
+                html::code_block(&String::from_utf8_lossy(&x.stdout)),
+            )
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .disable_web_page_preview(true)
+            .await?;
+        }
+        Err(e) => {
+            bot.reply_message(&msg, format!("sh: {e}")).await?;
+        }
+    }
     Ok(())
 }
 
