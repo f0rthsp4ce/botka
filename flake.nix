@@ -3,15 +3,15 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    naersk.url = "github:nix-community/naersk";
+    crane.url = "github:ipetkov/crane";
     nix-filter.url = "github:numtide/nix-filter";
     nixpkgs-mozilla.url = "github:mozilla/nixpkgs-mozilla";
 
-    naersk.inputs.nixpkgs.follows = "nixpkgs";
+    crane.inputs.nixpkgs.follows = "nixpkgs";
     flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-parts, naersk, nix-filter
+  outputs = inputs@{ self, nixpkgs, crane, flake-parts, nix-filter
     , nixpkgs-mozilla, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems =
@@ -34,12 +34,13 @@
           formatter = pkgs.nixfmt;
           packages.default = packages.f0bot;
 
-          packages.f0bot = (pkgs.callPackage naersk { }).buildPackage {
+          packages.f0bot = crane.lib.${system}.buildPackage {
             src = nix-filter.lib {
               root = ./.;
-              include = [ "src" "Cargo.toml" "Cargo.lock" ];
+              include =
+                [ "src" "Cargo.toml" "Cargo.lock" "config.example.yaml" ];
             };
-            buildInputs = [ pkgs.perl ];
+            nativeBuildInputs = [ pkgs.perl ];
           };
 
           packages.image = pkgs.dockerTools.buildImage {
