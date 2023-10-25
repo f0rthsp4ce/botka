@@ -1,0 +1,26 @@
+{
+  "name": "f0-residents-timeline",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "tsc && node dist/index.js",
+    "build": "tsc"
+  },
+  "author": "tar-xzf <tar_xzf@tuta.io>",
+  "license": "UNLICENSE OR MIT",
+  "bin": "dist/index.js",
+  "files": [
+    "f0-logo.svg"
+  ],
+  "dependencies": {
+    "d3": "^7.8.5",
+    "jsdom": "^22.1.0"
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.2",
+    "@types/jsdom": "^21.1.4",
+    "@types/node": "^20.8.8",
+    "typescript": "^5.2.2"
+  }
+}

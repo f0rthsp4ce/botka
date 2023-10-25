@@ -1,4 +1,6 @@
 /local
-/result
-/result-*
+/residents-timeline/dist
 /target
+node_modules
+result
+result-*

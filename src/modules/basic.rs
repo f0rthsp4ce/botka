@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::fmt::Write;
+use std::fmt::Write as _;
+use std::io::Write as _;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,7 +9,7 @@ use diesel::prelude::*;
 use itertools::Itertools;
 use macro_rules_attribute::derive;
 use teloxide::prelude::*;
-use teloxide::types::{StickerKind, ThreadId};
+use teloxide::types::{InputFile, StickerKind, ThreadId};
 use teloxide::utils::command::BotCommands;
 use teloxide::utils::html;
 
@@ -30,6 +31,10 @@ enum Command {
 
     #[command(description = "list residents.")]
     Residents,
+
+    #[command(description = "show residents timeline.")]
+    #[custom(resident = true)]
+    ResidentsTimeline,
 
     #[command(description = "show status.")]
     Status,
@@ -63,6 +68,9 @@ async fn start<'a>(
                 .await?;
         }
         Command::Residents => cmd_list_residents(bot, env, msg).await?,
+        Command::ResidentsTimeline => {
+            cmd_show_residents_timeline(bot, env, msg).await?;
+        }
         Command::Status => cmd_status(bot, env, msg).await?,
         Command::Version => {
             bot.reply_message(&msg, crate::VERSION).await?;
@@ -100,6 +108,37 @@ async fn cmd_list_residents<'a>(
         .parse_mode(teloxide::types::ParseMode::Html)
         .disable_web_page_preview(true)
         .await?;
+    Ok(())
+}
+
+async fn cmd_show_residents_timeline(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+) -> Result<()> {
+    let db = env.config.db.as_str();
+    let db = db.strip_prefix("sqlite://").unwrap_or(db);
+    let svg = std::process::Command::new("f0-residents-timeline")
+        .arg("-sqlite")
+        .arg(db)
+        .output()?;
+    if !svg.status.success() || !svg.stdout.starts_with(b"<svg") {
+        bot.reply_message(&msg, "Failed to generate timeline (svg).").await?;
+        return Ok(());
+    }
+    let mut png = std::process::Command::new("convert")
+        .arg("svg:-")
+        .arg("png:-")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()?;
+    png.stdin.take().unwrap().write_all(&svg.stdout)?;
+    let png = png.wait_with_output()?;
+    if !png.status.success() || !png.stdout.starts_with(b"\x89PNG") {
+        bot.reply_message(&msg, "Failed to generate timeline (png).").await?;
+        return Ok(());
+    }
+    bot.reply_photo(&msg, InputFile::memory(png.stdout)).await?;
     Ok(())
 }
 

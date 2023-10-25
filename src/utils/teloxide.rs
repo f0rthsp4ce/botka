@@ -1,6 +1,7 @@
 use teloxide::payloads;
 use teloxide::prelude::*;
-use teloxide::requests::JsonRequest;
+use teloxide::requests::{JsonRequest, MultipartRequest};
+use teloxide::types::InputFile;
 
 pub trait BotExt {
     fn reply_message<T: Into<String>>(
@@ -15,6 +16,12 @@ pub trait BotExt {
         question: Q,
         options: O,
     ) -> JsonRequest<payloads::SendPoll>;
+
+    fn reply_photo(
+        &self,
+        msg: &Message,
+        photo: InputFile,
+    ) -> MultipartRequest<payloads::SendPhoto>;
 }
 
 impl BotExt for Bot {
@@ -38,6 +45,17 @@ impl BotExt for Bot {
         let mut reply = self
             .send_poll(msg.chat.id, question, options)
             .reply_to_message_id(msg.id);
+        reply.message_thread_id = msg.thread_id;
+        reply
+    }
+
+    fn reply_photo(
+        &self,
+        msg: &Message,
+        photo: InputFile,
+    ) -> MultipartRequest<payloads::SendPhoto> {
+        let mut reply =
+            self.send_photo(msg.chat.id, photo).reply_to_message_id(msg.id);
         reply.message_thread_id = msg.thread_id;
         reply
     }

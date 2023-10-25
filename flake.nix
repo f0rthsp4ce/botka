@@ -30,7 +30,23 @@
             # rust-src is required for rust-analyzer
             extensions = [ "rust-src" ];
           };
-          runtimeDeps = [ pkgs.hello pkgs.bash ];
+          baseRuntimeDeps =
+            [ pkgs.bash pkgs.hello pkgs.imagemagick pkgs.sqlite ];
+          allRuntimeDeps = baseRuntimeDeps ++ [ residents-timeline ];
+          residents-timeline = pkgs.buildNpmPackage rec {
+            name = "residents-timeline";
+            src = nix-filter.lib {
+              root = ./residents-timeline;
+              include = [
+                "f0-logo.svg"
+                "index.ts"
+                "package-lock.json"
+                "package.json"
+                "tsconfig.json"
+              ];
+            };
+            npmDepsHash = (import ./hashes.nix).residents-timeline;
+          };
         in rec {
           formatter = pkgs.nixfmt;
           packages.default = packages.f0bot;
@@ -46,9 +62,11 @@
 
           packages.f0botWithDeps = pkgs.writeScriptBin "f0bot" ''
             #!${pkgs.stdenv.shell}
-            export PATH=${pkgs.lib.makeBinPath runtimeDeps}:$PATH
+            export PATH=${pkgs.lib.makeBinPath allRuntimeDeps}:$PATH
             exec ${packages.f0bot}/bin/f0bot "$@"
           '';
+
+          packages.residents-timeline = residents-timeline;
 
           packages.image = pkgs.dockerTools.buildImage {
             name = "f0bot";
@@ -70,13 +88,15 @@
                 postgresqlSupport = false;
                 mysqlSupport = false;
               })
+              pkgs.bun
               pkgs.just
               pkgs.mold
               pkgs.nixfmt
               pkgs.nodePackages.prettier
+              pkgs.nodejs
               pkgs.perl
-              pkgs.sqlite
-            ] ++ runtimeDeps;
+              pkgs.prefetch-npm-deps
+            ] ++ baseRuntimeDeps;
           };
         };
     };
