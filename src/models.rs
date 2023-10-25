@@ -71,7 +71,7 @@ pub struct TgChatTopic {
     pub id_icon_emoji: DbMessageId,
 }
 
-#[derive(Clone, Debug, Insertable, Queryable, Selectable)]
+#[derive(Clone, Debug, Insertable, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::residents)]
 pub struct Resident {
     pub rowid: i32,

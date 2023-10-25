@@ -25,6 +25,7 @@ pub async fn run(
 
     let app = Router::new()
         .route("/residents/v0", get(residents_v0))
+        .route("/all_residents/v0", get(get_all_residents_v0))
         .with_state(app_state);
 
     axum::Server::bind(&addr)
@@ -58,5 +59,14 @@ async fn residents_v0(
         })
         .collect_vec();
 
+    (StatusCode::OK, Json(residents))
+}
+
+async fn get_all_residents_v0(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<Vec<models::Resident>>) {
+    let residents: Vec<models::Resident> = schema::residents::table
+        .load(&mut *state.conn.lock().unwrap())
+        .unwrap();
     (StatusCode::OK, Json(residents))
 }
