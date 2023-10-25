@@ -38,7 +38,7 @@ try_match = { version = "0.4.1", default-features = false }
 [dependencies.teloxide]
 # TODO: switch back to upstream once merged and released
 git = "https://github.com/tar-xzf/teloxide"
-rev="f22575f6127d47329a972ca27d3ad47df0eb4ec2"
+rev = "4fe1a083be74bb37956ee8456a6a1dcf0decc614"
 features = ["macros"]
 
 [dependencies.openssl-sys]
