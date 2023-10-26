@@ -7,6 +7,7 @@ use async_openai::types::{
 use chrono::DateTime;
 use diesel::prelude::*;
 use itertools::Itertools;
+use tap::Tap as _;
 use teloxide::prelude::*;
 use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardMarkup, MediaKind, MessageId,
@@ -239,23 +240,22 @@ fn classify_dumb(text: &str) -> Result<ClassificationResult> {
 }
 
 const MODEL: &str = "gpt-4";
+const METRIC_NAME: &str = "botka_openai_used_tokens_total";
 
 pub fn register_metrics() {
-    metrics::register_counter!("openai_usage_prompt_tokens", "model" => MODEL);
-    metrics::register_counter!("openai_usage_completion_tokens", "model" => MODEL);
-    metrics::register_counter!("openai_usage_total_tokens", "model" => MODEL);
-
-    metrics::describe_counter!(
-        "openai_usage_prompt_tokens",
-        "Number of tokens used in prompts"
+    metrics::register_counter!(
+        METRIC_NAME,
+        "model" => MODEL,
+        "type" => "prompt",
+    );
+    metrics::register_counter!(
+        METRIC_NAME,
+        "model" => MODEL,
+        "type" => "completion",
     );
     metrics::describe_counter!(
-        "openai_usage_completion_tokens",
-        "Number of tokens used in completions"
-    );
-    metrics::describe_counter!(
-        "openai_usage_total_tokens",
-        "Total number of tokens used"
+        METRIC_NAME,
+        "Total number of tokens used by OpenAI API."
     );
 }
 
@@ -277,22 +277,24 @@ async fn classify_openai(
                 .build()?,
         ])
         .build()?;
-    let response = env.openai_client.chat().create(request).await?;
+    let response = env
+        .openai_client
+        .chat()
+        .create(request)
+        .await
+        .tap(|r| crate::metrics::update_service("openai", r.is_ok()))?;
     if let Some(usage) = response.usage {
         metrics::counter!(
-            "openai_usage_prompt_tokens",
+            METRIC_NAME,
             usage.prompt_tokens.into(),
             "model" => MODEL,
+            "type" => "prompt",
         );
         metrics::counter!(
-            "openai_usage_completion_tokens",
+            METRIC_NAME,
             usage.completion_tokens.into(),
             "model" => MODEL,
-        );
-        metrics::counter!(
-            "openai_usage_total_tokens",
-            usage.total_tokens.into(),
-            "model" => MODEL,
+            "type" => "completion",
         );
     }
     let response_text = response

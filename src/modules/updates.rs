@@ -12,21 +12,6 @@ use crate::common::BotEnv;
 use crate::models;
 use crate::utils::get_wikijs_updates;
 
-pub fn register_metrics() {
-    metrics::register_gauge!("wikijs_update_success");
-    metrics::describe_gauge!(
-        "wikijs_update_success",
-        "1 if the last update was successful, 0 otherwise, 0.5 if not yet run"
-    );
-    metrics::gauge!("wikijs_update_success", 0.5);
-
-    metrics::register_gauge!("wikijs_update_last");
-    metrics::describe_gauge!(
-        "wikijs_update_last",
-        "Timestamp of the last successful update"
-    );
-}
-
 pub async fn task(env: Arc<BotEnv>, bot: Bot, shutdown: CancellationToken) {
     loop {
         select! {
@@ -37,12 +22,9 @@ pub async fn task(env: Arc<BotEnv>, bot: Bot, shutdown: CancellationToken) {
         }
 
         match check_wikijs_updates(env.clone(), bot.clone()).await {
-            Ok(()) => {
-                metrics::gauge!("wikijs_update_success", 1.0);
-                metrics::gauge!("wikijs_update_last", crate::now_f64());
-            }
+            Ok(()) => crate::metrics::update_service("wikijs", true),
             Err(e) => {
-                metrics::gauge!("wikijs_update_success", 0.0);
+                crate::metrics::update_service("wikijs", false);
                 log::error!("check_wikijs_updates: {}", e);
             }
         }

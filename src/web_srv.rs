@@ -50,16 +50,19 @@ async fn metrics(State(state): State<Arc<AppState>>) -> String {
         .count()
         .get_result::<i64>(&mut *state.conn.lock().unwrap())
         .unwrap_or_default() as f64;
-    metrics::describe_gauge!("residents", "Number of residents");
-    metrics::gauge!("residents", resident_count);
+    metrics::describe_gauge!("botka_residents", "Number of residents.");
+    metrics::gauge!("botka_residents", resident_count);
 
     let db_size = std::fs::metadata(
         state.config.db.strip_prefix("sqlite://").unwrap_or(&state.config.db),
     )
     .map(|m| m.len())
     .unwrap_or_default() as f64;
-    metrics::describe_gauge!("db_size", "Size of the database file in bytes");
-    metrics::gauge!("db_size", db_size);
+    metrics::describe_gauge!(
+        "botka_db_size_bytes",
+        "Size of the database file in bytes."
+    );
+    metrics::gauge!("botka_db_size_bytes", db_size);
 
     state.prometheus.render()
 }

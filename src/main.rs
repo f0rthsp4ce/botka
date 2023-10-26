@@ -28,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 
 mod common;
 mod db;
+mod metrics;
 mod models;
 mod modules;
 mod schema;
@@ -60,19 +61,8 @@ async fn main() -> Result<()> {
 
 async fn run_bot(config_fpath: &str) -> Result<()> {
     let prometheus = PrometheusBuilder::new().install_recorder()?;
-    modules::basic::register_metrics();
+    metrics::register_metrics();
     modules::borrowed_items::register_metrics();
-    modules::updates::register_metrics();
-    metrics::register_gauge!("last_tg_update_time");
-    metrics::describe_gauge!(
-        "last_tg_update_time",
-        "Timestamp of the last Telegram update"
-    );
-    metrics::register_gauge!("last_tg_update_id");
-    metrics::describe_gauge!(
-        "last_tg_update_id",
-        "ID of the last Telegram update"
-    );
 
     let config: models::Config =
         serde_yaml::from_reader(File::open(config_fpath)?)
@@ -98,10 +88,6 @@ async fn run_bot(config_fpath: &str) -> Result<()> {
         bot.clone(),
         dptree::entry()
             .inspect(modules::tg_scraper::scrape)
-            .inspect(|update: Update| {
-                metrics::gauge!("last_tg_update_time", now_f64());
-                metrics::gauge!("last_tg_update_id", f64::from(update.id.0));
-            })
             .branch(
                 Update::filter_message()
                     .enter_dialogue::<Message, InMemStorage<State>, State>()
@@ -222,12 +208,4 @@ fn run_signal_handler(
             }
         }
     });
-}
-
-/// Returns the current time in seconds since the Unix epoch. Used in metrics.
-fn now_f64() -> f64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
 }

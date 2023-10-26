@@ -80,10 +80,10 @@ async fn handle_request(
         .insert("host", "api.telegram.org".parse().expect("host header"));
     let path = parts.uri.path_and_query().unwrap().path();
     const PREFIX: &str = "/bot";
-    const SUFIX: &str = "/GetUpdates";
+    const SUFFIX: &str = "/GetUpdates";
     let is_get_updates = path.starts_with(PREFIX)
-        && path.ends_with(SUFIX)
-        && path[PREFIX.len()..path.len() - SUFIX.len()].find('/').is_none();
+        && path.ends_with(SUFFIX)
+        && path[PREFIX.len()..path.len() - SUFFIX.len()].find('/').is_none();
 
     let body_bytes = hyper::body::to_bytes(body).await?;
     let request = Request::from_parts(parts, body_bytes);
@@ -102,12 +102,15 @@ async fn handle_request(
         if let Ok(body) =
             serde_json::from_slice::<GetUpdatesResponse>(&body[..])
         {
+            crate::metrics::update_service("telegram", true);
             let mut log_file = proxy.log_file.lock().await;
             for update in body.result {
                 serde_json::to_writer(&mut *log_file, &update).unwrap();
                 log_file.write_all(b"\n").unwrap();
             }
             log_file.flush().unwrap();
+        } else {
+            crate::metrics::update_service("telegram", false);
         }
     }
 
