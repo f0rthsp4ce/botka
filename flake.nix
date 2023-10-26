@@ -33,6 +33,7 @@
           baseRuntimeDeps =
             [ pkgs.bash pkgs.hello pkgs.imagemagick pkgs.sqlite ];
           allRuntimeDeps = baseRuntimeDeps ++ [ residents-timeline ];
+          buildDeps = [ pkgs.openssl pkgs.perl pkgs.pkg-config pkgs.sqlite ];
           residents-timeline = pkgs.buildNpmPackage rec {
             name = "residents-timeline";
             src = nix-filter.lib {
@@ -57,7 +58,7 @@
               include =
                 [ "src" "Cargo.toml" "Cargo.lock" "config.example.yaml" ];
             };
-            nativeBuildInputs = [ pkgs.perl ];
+            nativeBuildInputs = buildDeps;
           };
 
           packages.f0botWithDeps = pkgs.writeScriptBin "f0bot" ''
@@ -79,9 +80,10 @@
             config.Cmd = [ "/bin/f0bot" ];
           };
 
-          devShells.default = pkgs.mkShell {
+          devShells.default = pkgs.mkShell.override {
             # Use mold for faster linking
-            env = { RUSTFLAGS = "-Clink-args=-fuse-ld=mold"; };
+            stdenv = pkgs.stdenvAdapters.useMoldLinker pkgs.stdenv;
+          } {
             buildInputs = [
               rustDev
               (pkgs.diesel-cli.override {
@@ -94,9 +96,8 @@
               pkgs.nixfmt
               pkgs.nodePackages.prettier
               pkgs.nodejs
-              pkgs.perl
               pkgs.prefetch-npm-deps
-            ] ++ baseRuntimeDeps;
+            ] ++ buildDeps ++ baseRuntimeDeps;
           };
         };
     };
