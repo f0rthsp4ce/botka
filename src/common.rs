@@ -57,7 +57,7 @@ pub trait HasCommandRules {
 
 pub struct BotEnv {
     pub conn: Mutex<SqliteConnection>,
-    pub config: crate::models::Config,
+    pub config: Arc<crate::models::Config>,
     pub reqwest_client: reqwest::Client,
     pub openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
 }

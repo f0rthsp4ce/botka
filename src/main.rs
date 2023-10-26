@@ -17,6 +17,7 @@ use common::{MyDialogue, State};
 use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
 use itertools::Itertools;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::{Dispatcher, HandlerExt, UpdateFilterExt};
 use teloxide::payloads::AnswerCallbackQuerySetters;
@@ -58,6 +59,21 @@ async fn main() -> Result<()> {
 }
 
 async fn run_bot(config_fpath: &str) -> Result<()> {
+    let prometheus = PrometheusBuilder::new().install_recorder()?;
+    modules::basic::register_metrics();
+    modules::borrowed_items::register_metrics();
+    modules::updates::register_metrics();
+    metrics::register_gauge!("last_tg_update_time");
+    metrics::describe_gauge!(
+        "last_tg_update_time",
+        "Timestamp of the last Telegram update"
+    );
+    metrics::register_gauge!("last_tg_update_id");
+    metrics::describe_gauge!(
+        "last_tg_update_id",
+        "ID of the last Telegram update"
+    );
+
     let config: models::Config =
         serde_yaml::from_reader(File::open(config_fpath)?)
             .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
@@ -71,7 +87,7 @@ async fn run_bot(config_fpath: &str) -> Result<()> {
             async_openai::config::OpenAIConfig::new()
                 .with_api_key(config.services.openai.api_key.clone()),
         ),
-        config,
+        config: Arc::new(config),
     });
 
     let proxy_addr =
@@ -82,6 +98,10 @@ async fn run_bot(config_fpath: &str) -> Result<()> {
         bot.clone(),
         dptree::entry()
             .inspect(modules::tg_scraper::scrape)
+            .inspect(|update: Update| {
+                metrics::gauge!("last_tg_update_time", now_f64());
+                metrics::gauge!("last_tg_update_id", f64::from(update.id.0));
+            })
             .branch(
                 Update::filter_message()
                     .enter_dialogue::<Message, InMemStorage<State>, State>()
@@ -122,7 +142,8 @@ async fn run_bot(config_fpath: &str) -> Result<()> {
 
     join_handles.push(tokio::spawn(web_srv::run(
         SqliteConnection::establish(&bot_env.config.db)?,
-        bot_env.config.server_addr,
+        bot_env.config.clone(),
+        prometheus,
         cancel.clone(),
     )));
 
@@ -201,4 +222,12 @@ fn run_signal_handler(
             }
         }
     });
+}
+
+/// Returns the current time in seconds since the Unix epoch. Used in metrics.
+fn now_f64() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
 }

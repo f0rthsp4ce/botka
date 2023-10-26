@@ -1,4 +1,3 @@
-use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use axum::extract::State;
@@ -7,6 +6,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use diesel::prelude::*;
 use itertools::Itertools;
+use metrics_exporter_prometheus::PrometheusHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::db::DbUserId;
@@ -14,25 +14,54 @@ use crate::{models, schema};
 
 struct AppState {
     conn: Mutex<SqliteConnection>,
+    config: Arc<models::Config>,
+    prometheus: PrometheusHandle,
 }
 
 pub async fn run(
     conn: SqliteConnection,
-    addr: SocketAddr,
+    config: Arc<models::Config>,
+    prometheus: PrometheusHandle,
     cancel: CancellationToken,
 ) {
-    let app_state = Arc::new(AppState { conn: Mutex::new(conn) });
+    let app_state = Arc::new(AppState {
+        conn: Mutex::new(conn),
+        config: config.clone(),
+        prometheus,
+    });
 
     let app = Router::new()
+        .route("/metrics", get(metrics))
         .route("/residents/v0", get(residents_v0))
         .route("/all_residents/v0", get(get_all_residents_v0))
         .with_state(app_state);
 
-    axum::Server::bind(&addr)
+    axum::Server::bind(&config.server_addr)
         .serve(app.into_make_service())
         .with_graceful_shutdown(cancel.cancelled())
         .await
         .unwrap();
+}
+
+#[allow(clippy::cast_precision_loss)]
+async fn metrics(State(state): State<Arc<AppState>>) -> String {
+    let resident_count = schema::residents::table
+        .filter(schema::residents::end_date.is_null())
+        .count()
+        .get_result::<i64>(&mut *state.conn.lock().unwrap())
+        .unwrap_or_default() as f64;
+    metrics::describe_gauge!("residents", "Number of residents");
+    metrics::gauge!("residents", resident_count);
+
+    let db_size = std::fs::metadata(
+        state.config.db.strip_prefix("sqlite://").unwrap_or(&state.config.db),
+    )
+    .map(|m| m.len())
+    .unwrap_or_default() as f64;
+    metrics::describe_gauge!("db_size", "Size of the database file in bytes");
+    metrics::gauge!("db_size", db_size);
+
+    state.prometheus.render()
 }
 
 async fn residents_v0(

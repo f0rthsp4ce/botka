@@ -142,6 +142,21 @@ async fn cmd_show_residents_timeline(
     Ok(())
 }
 
+pub fn register_metrics() {
+    metrics::register_gauge!("mikrotik_success");
+    metrics::describe_gauge!(
+        "mikrotik_success",
+        "1 if the last Mikrotik request was successful, 0 otherwise, 0.5 if not yet run"
+    );
+    metrics::gauge!("mikrotik_success", 0.5);
+
+    metrics::register_gauge!("mikrotik_last");
+    metrics::describe_gauge!(
+        "mikrotik_last",
+        "Timestamp of the last successful Mikrotik request"
+    );
+}
+
 async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
     #[derive(serde::Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
@@ -152,25 +167,32 @@ async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
     }
 
     let conf = &env.config.services.mikrotik;
-    let leases = env
-        .reqwest_client
-        .post(format!("https://{}/rest/ip/dhcp-server/lease/print", conf.host))
-        .timeout(Duration::from_secs(5))
-        .basic_auth(&conf.username, Some(&conf.password))
-        .json(&serde_json::json!({
-            ".proplist": [
-                "mac-address",
-                "last-seen",
-            ]
-        }))
-        .send()
-        .await?
-        .json::<Vec<Lease>>()
-        .await;
+    let leases = async {
+        env.reqwest_client
+            .post(format!(
+                "https://{}/rest/ip/dhcp-server/lease/print",
+                conf.host
+            ))
+            .timeout(Duration::from_secs(5))
+            .basic_auth(&conf.username, Some(&conf.password))
+            .json(&serde_json::json!({
+                ".proplist": [
+                    "mac-address",
+                    "last-seen",
+                ]
+            }))
+            .send()
+            .await?
+            .json::<Vec<Lease>>()
+            .await
+    }
+    .await;
 
     let mut text = String::new();
     match leases {
         Ok(leases) => {
+            metrics::gauge!("mikrotik_success", 1.0);
+            metrics::gauge!("mikrotik_last", crate::now_f64());
             let active_mac_addrs = leases
                 .into_iter()
                 .filter(|l| l.last_seen < Duration::from_secs(11 * 60))
@@ -194,6 +216,7 @@ async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
             format_users(&mut text, data.iter().map(|(id, u)| (*id, u)));
         }
         Err(e) => {
+            metrics::gauge!("mikrotik_success", 0.0);
             log::error!("Failed to get leases: {}", e);
             writeln!(text, "Failed to get leases.").unwrap();
         }

@@ -238,13 +238,34 @@ fn classify_dumb(text: &str) -> Result<ClassificationResult> {
     Ok(ClassificationResult::Took(items))
 }
 
+const MODEL: &str = "gpt-4";
+
+pub fn register_metrics() {
+    metrics::register_counter!("openai_usage_prompt_tokens", "model" => MODEL);
+    metrics::register_counter!("openai_usage_completion_tokens", "model" => MODEL);
+    metrics::register_counter!("openai_usage_total_tokens", "model" => MODEL);
+
+    metrics::describe_counter!(
+        "openai_usage_prompt_tokens",
+        "Number of tokens used in prompts"
+    );
+    metrics::describe_counter!(
+        "openai_usage_completion_tokens",
+        "Number of tokens used in completions"
+    );
+    metrics::describe_counter!(
+        "openai_usage_total_tokens",
+        "Total number of tokens used"
+    );
+}
+
 async fn classify_openai(
     env: Arc<BotEnv>,
     text: &str,
 ) -> Result<ClassificationResult> {
     let request = CreateChatCompletionRequestArgs::default()
         .max_tokens(256u16)
-        .model("gpt-4")
+        .model(MODEL)
         .messages([
             ChatCompletionRequestMessageArgs::default()
                 .role(async_openai::types::Role::System)
@@ -257,6 +278,23 @@ async fn classify_openai(
         ])
         .build()?;
     let response = env.openai_client.chat().create(request).await?;
+    if let Some(usage) = response.usage {
+        metrics::counter!(
+            "openai_usage_prompt_tokens",
+            usage.prompt_tokens.into(),
+            "model" => MODEL,
+        );
+        metrics::counter!(
+            "openai_usage_completion_tokens",
+            usage.completion_tokens.into(),
+            "model" => MODEL,
+        );
+        metrics::counter!(
+            "openai_usage_total_tokens",
+            usage.total_tokens.into(),
+            "model" => MODEL,
+        );
+    }
     let response_text = response
         .choices
         .first()
