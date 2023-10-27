@@ -1,12 +1,11 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::routing::get;
-use axum::{Json, Router};
 use diesel::prelude::*;
 use itertools::Itertools;
 use metrics_exporter_prometheus::PrometheusHandle;
+use salvo::prelude::{
+    handler, Json, Listener, Response, Router, Server, TcpListener,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::db::DbUserId;
@@ -18,58 +17,62 @@ struct AppState {
     prometheus: PrometheusHandle,
 }
 
+static STATE: OnceLock<AppState> = OnceLock::new();
+
+fn state() -> &'static AppState {
+    STATE.get().expect("AppState not initialized")
+}
+
 pub async fn run(
     conn: SqliteConnection,
     config: Arc<models::Config>,
     prometheus: PrometheusHandle,
     cancel: CancellationToken,
 ) {
-    let app_state = Arc::new(AppState {
-        conn: Mutex::new(conn),
-        config: config.clone(),
-        prometheus,
-    });
+    let app_state =
+        AppState { conn: Mutex::new(conn), config: config.clone(), prometheus };
+    STATE.set(app_state).ok().expect("AppState already initialized");
 
-    let app = Router::new()
-        .route("/metrics", get(metrics))
-        .route("/residents/v0", get(residents_v0))
-        .route("/all_residents/v0", get(get_all_residents_v0))
-        .with_state(app_state);
+    let router = Router::new()
+        .push(Router::with_path("/metrics").get(get_metrics))
+        .push(Router::with_path("/residents/v0").get(get_residents_v0))
+        .push(Router::with_path("/all_residents/v0").get(get_all_residents_v0));
 
-    axum::Server::bind(&config.server_addr)
-        .serve(app.into_make_service())
-        .with_graceful_shutdown(cancel.cancelled())
-        .await
-        .unwrap();
+    let listener = TcpListener::new(config.server_addr).bind().await;
+    Server::new(listener)
+        .serve_with_graceful_shutdown(
+            router,
+            async move { cancel.cancelled().await },
+            None,
+        )
+        .await;
 }
 
-#[allow(clippy::cast_precision_loss)]
-async fn metrics(State(state): State<Arc<AppState>>) -> String {
+#[handler]
+async fn get_metrics() -> String {
     let resident_count = schema::residents::table
         .filter(schema::residents::end_date.is_null())
         .count()
-        .get_result::<i64>(&mut *state.conn.lock().unwrap())
+        .get_result::<i64>(&mut *state().conn.lock().unwrap())
         .unwrap_or_default() as f64;
     metrics::describe_gauge!("botka_residents", "Number of residents.");
     metrics::gauge!("botka_residents", resident_count);
 
-    let db_size = std::fs::metadata(
-        state.config.db.strip_prefix("sqlite://").unwrap_or(&state.config.db),
-    )
-    .map(|m| m.len())
-    .unwrap_or_default() as f64;
+    let db = &state().config.db;
+    let db_size = std::fs::metadata(db.strip_prefix("sqlite://").unwrap_or(db))
+        .map(|m| m.len())
+        .unwrap_or_default() as f64;
     metrics::describe_gauge!(
         "botka_db_size_bytes",
         "Size of the database file in bytes."
     );
     metrics::gauge!("botka_db_size_bytes", db_size);
 
-    state.prometheus.render()
+    state().prometheus.render()
 }
 
-async fn residents_v0(
-    State(state): State<Arc<AppState>>,
-) -> (StatusCode, Json<Vec<models::DataResident>>) {
+#[handler]
+async fn get_residents_v0(res: &mut Response) {
     let residents: Vec<(DbUserId, models::TgUser)> = schema::residents::table
         .filter(schema::residents::end_date.is_null())
         .inner_join(
@@ -78,7 +81,7 @@ async fn residents_v0(
         )
         .order(schema::residents::tg_id.asc())
         .select((schema::residents::tg_id, schema::tg_users::all_columns))
-        .load(&mut *state.conn.lock().unwrap())
+        .load(&mut *state().conn.lock().unwrap())
         .unwrap();
 
     let residents = residents
@@ -91,14 +94,13 @@ async fn residents_v0(
         })
         .collect_vec();
 
-    (StatusCode::OK, Json(residents))
+    res.render(Json(residents));
 }
 
-async fn get_all_residents_v0(
-    State(state): State<Arc<AppState>>,
-) -> (StatusCode, Json<Vec<models::Resident>>) {
+#[handler]
+async fn get_all_residents_v0(res: &mut Response) {
     let residents: Vec<models::Resident> = schema::residents::table
-        .load(&mut *state.conn.lock().unwrap())
+        .load(&mut *state().conn.lock().unwrap())
         .unwrap();
-    (StatusCode::OK, Json(residents))
+    res.render(Json(residents));
 }
