@@ -8,15 +8,16 @@
 // FIXME: fix these
 #![allow(clippy::too_many_lines)]
 
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
+use argh::FromArgs;
 use common::{MyDialogue, State};
 use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
-use itertools::Itertools;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::{Dispatcher, HandlerExt, UpdateFilterExt};
@@ -38,28 +39,56 @@ mod web_srv;
 
 const VERSION: &str = git_version::git_version!(fallback = "unknown");
 
+#[derive(FromArgs, PartialEq, Debug)]
+/// botka
+struct Args {
+    #[argh(subcommand)]
+    subcommand: SubCommand,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand)]
+enum SubCommand {
+    Bot(SubCommandBot),
+    Scrape(SubCommandScrape),
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// run the bot
+#[argh(subcommand, name = "bot")]
+struct SubCommandBot {
+    #[argh(positional)]
+    /// config file
+    config_file: OsString,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// scrape the log
+#[argh(subcommand, name = "scrape")]
+struct SubCommandScrape {
+    #[argh(positional)]
+    /// db file
+    db_file: String,
+
+    #[argh(positional)]
+    /// log file
+    log_file: OsString,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     std::env::set_var("RUST_LOG", "info");
     pretty_env_logger::init();
+    let args: Args = argh::from_env();
     log::info!("Version {}", VERSION);
-
-    let args = std::env::args().collect_vec();
-    let args = args.iter().map(|s| s.as_str()).collect_vec();
-    match args.as_slice()[1..] {
-        ["bot", config_file] => run_bot(config_file).await?,
-        ["scrape", db_file, log_file] => scrape_log(db_file, log_file)?,
-        _ => {
-            eprintln!("Usage: {} bot <config.yaml>", args[0]);
-            eprintln!("Usage: {} scrape <db.sqlite> <log.txt>", args[0]);
-            std::process::exit(1);
-        }
+    match args.subcommand {
+        SubCommand::Bot(c) => run_bot(&c.config_file).await?,
+        SubCommand::Scrape(c) => scrape_log(&c.db_file, &c.log_file)?,
     }
-
     Ok(())
 }
 
-async fn run_bot(config_fpath: &str) -> Result<()> {
+async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     let prometheus = PrometheusBuilder::new().install_recorder()?;
     metrics::register_metrics();
     modules::borrowed_items::register_metrics();
@@ -140,7 +169,7 @@ async fn run_bot(config_fpath: &str) -> Result<()> {
     Ok(())
 }
 
-fn scrape_log(db_fpath: &str, log_fpath: &str) -> Result<()> {
+fn scrape_log(db_fpath: &str, log_fpath: &OsStr) -> Result<()> {
     let mut conn = SqliteConnection::establish(db_fpath)?;
     let mut log_file = File::open(log_fpath)?;
     let mut buf_reader = BufReader::new(&mut log_file);
