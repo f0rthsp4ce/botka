@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::net::SocketAddr;
 
 use diesel::prelude::*;
+use salvo_oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use teloxide::types::{ChatId, ChatMember, ThreadId, UserId};
 
@@ -71,7 +72,9 @@ pub struct TgChatTopic {
     pub id_icon_emoji: DbMessageId,
 }
 
-#[derive(Clone, Debug, Insertable, Queryable, Selectable, Serialize)]
+#[derive(
+    Clone, Debug, Insertable, Queryable, Selectable, Serialize, ToSchema,
+)]
 #[diesel(table_name = crate::schema::residents)]
 pub struct Resident {
     pub rowid: i32,
@@ -209,8 +212,9 @@ pub struct OpenAIConfig {
 }
 
 // Serde models
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct DataResident {
+    #[salvo(schema(value_type = DbUserId))]
     pub id: UserId,
     pub username: Option<String>,
     pub first_name: String,

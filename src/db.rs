@@ -7,6 +7,7 @@ use diesel::{
     SqliteConnection,
 };
 use diesel_derive_newtype::DieselNewType;
+use salvo_oapi::ToSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use teloxide::types::{ChatId, MessageId, Recipient, ThreadId, UserId};
@@ -103,6 +104,7 @@ macro_rules! make_db_wrapper {
             Serialize,
             Deserialize,
             DieselNewType,
+            ToSchema,
         )]
         pub struct $name($inner);
     };

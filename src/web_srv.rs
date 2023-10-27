@@ -3,9 +3,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use diesel::prelude::*;
 use itertools::Itertools;
 use metrics_exporter_prometheus::PrometheusHandle;
-use salvo::prelude::{
-    handler, Json, Listener, Response, Router, Server, TcpListener,
-};
+use salvo::conn::TcpListener;
+use salvo::writing::{Json, Text};
+use salvo::{Listener, Router, Server};
+use salvo_oapi::{endpoint, OpenApi};
+use tap::Pipe as _;
 use tokio_util::sync::CancellationToken;
 
 use crate::db::DbUserId;
@@ -23,6 +25,10 @@ fn state() -> &'static AppState {
     STATE.get().expect("AppState not initialized")
 }
 
+fn server_addr() -> String {
+    format!("http://{}", state().config.server_addr)
+}
+
 pub async fn run(
     conn: SqliteConnection,
     config: Arc<models::Config>,
@@ -34,9 +40,30 @@ pub async fn run(
     STATE.set(app_state).ok().expect("AppState already initialized");
 
     let router = Router::new()
+        .get(get_index)
         .push(Router::with_path("/metrics").get(get_metrics))
         .push(Router::with_path("/residents/v0").get(get_residents_v0))
         .push(Router::with_path("/all_residents/v0").get(get_all_residents_v0));
+
+    let doc = OpenApi::with_info(
+        salvo_oapi::Info::new("Botka HTTP API", "0.1").description(
+            "
+- Source code: https://github.com/f0rthsp4ce/botka
+- Wiki page: https://wiki.f0rth.space/en/residents/telegram-bot
+                ",
+        ),
+    )
+    .add_server(salvo_oapi::Server::new(server_addr()))
+    .add_path(
+        "/openapi.json",
+        salvo_oapi::PathItem::new(
+            salvo_oapi::PathItemType::Get,
+            salvo_oapi::Operation::new().summary("This openapi.json file."),
+        ),
+    )
+    .merge_router(&router);
+
+    let router = router.unshift(doc.into_router("/openapi.json"));
 
     let listener = TcpListener::new(config.server_addr).bind().await;
     Server::new(listener)
@@ -48,7 +75,32 @@ pub async fn run(
         .await;
 }
 
-#[handler]
+#[salvo::prelude::handler]
+async fn get_index() -> Text<String> {
+    format!(r#"<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Botka API</title>
+    <script type="module" src="https://unpkg.com/rapidoc/dist/rapidoc-min.js"></script>
+</head>
+<body>
+    <rapi-doc
+      allow-authentication="false"
+      allow-server-selection="false"
+      render-style="view"
+      spec-url="{}/openapi.json"
+      theme="dark"
+    />
+</body>
+</html>
+"#, server_addr())
+.pipe(Text::Html)
+}
+
+/// Prometheus metrics endpoint.
+#[endpoint()]
+#[allow(clippy::cast_precision_loss)]
 async fn get_metrics() -> String {
     let resident_count = schema::residents::table
         .filter(schema::residents::end_date.is_null())
@@ -71,8 +123,9 @@ async fn get_metrics() -> String {
     state().prometheus.render()
 }
 
-#[handler]
-async fn get_residents_v0(res: &mut Response) {
+/// Get a list of current residents.
+#[endpoint()]
+async fn get_residents_v0() -> Json<Vec<models::DataResident>> {
     let residents: Vec<(DbUserId, models::TgUser)> = schema::residents::table
         .filter(schema::residents::end_date.is_null())
         .inner_join(
@@ -94,13 +147,15 @@ async fn get_residents_v0(res: &mut Response) {
         })
         .collect_vec();
 
-    res.render(Json(residents));
+    Json(residents)
 }
 
-#[handler]
-async fn get_all_residents_v0(res: &mut Response) {
-    let residents: Vec<models::Resident> = schema::residents::table
+/// Get a list of current and past residents.
+/// The same resident may appear multiple times if they have left and returned.
+#[endpoint()]
+async fn get_all_residents_v0() -> Json<Vec<models::Resident>> {
+    schema::residents::table
         .load(&mut *state().conn.lock().unwrap())
-        .unwrap();
-    res.render(Json(residents));
+        .map(Json)
+        .unwrap()
 }
