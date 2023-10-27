@@ -52,7 +52,13 @@
           formatter = pkgs.nixfmt;
           packages.default = packages.f0bot;
 
-          packages.f0bot = crane.lib.${system}.buildPackage {
+          packages.f0bot = pkgs.writeScriptBin "f0bot" ''
+            #!${pkgs.stdenv.shell}
+            export PATH=${pkgs.lib.makeBinPath allRuntimeDeps}:$PATH
+            exec ${packages.f0bot-unwrapped}/bin/f0bot "$@"
+          '';
+
+          packages.f0bot-unwrapped = crane.lib.${system}.buildPackage {
             src = nix-filter.lib {
               root = ./.;
               include =
@@ -60,12 +66,6 @@
             };
             nativeBuildInputs = buildDeps;
           };
-
-          packages.f0botWithDeps = pkgs.writeScriptBin "f0bot" ''
-            #!${pkgs.stdenv.shell}
-            export PATH=${pkgs.lib.makeBinPath allRuntimeDeps}:$PATH
-            exec ${packages.f0bot}/bin/f0bot "$@"
-          '';
 
           packages.residents-timeline = residents-timeline;
 
