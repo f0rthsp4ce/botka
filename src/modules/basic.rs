@@ -73,7 +73,7 @@ async fn start<'a>(
         }
         Command::Status => cmd_status(bot, env, msg).await?,
         Command::Version => {
-            bot.reply_message(&msg, crate::VERSION).await?;
+            bot.reply_message(&msg, crate::version()).await?;
         }
         Command::Topics => cmd_topics(bot, env, msg).await?,
         Command::Hello(args) => cmd_hello(bot, msg, &args).await?,

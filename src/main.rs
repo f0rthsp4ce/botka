@@ -11,7 +11,7 @@
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::Result;
 use argh::FromArgs;
@@ -37,11 +37,18 @@ mod tracing_proxy;
 mod utils;
 mod web_srv;
 
-const VERSION: &str = git_version::git_version!(fallback = "unknown");
+static VERSION: OnceLock<String> = OnceLock::new();
+
+fn version() -> &'static str {
+    VERSION.get().expect("VERSION is not set")
+}
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// botka
 struct Args {
+    #[argh(option, hidden_help = true, long = "-set-revision")]
+    set_revision: Option<String>,
+
     #[argh(subcommand)]
     subcommand: SubCommand,
 }
@@ -80,7 +87,12 @@ async fn main() -> Result<()> {
     std::env::set_var("RUST_LOG", "info");
     pretty_env_logger::init();
     let args: Args = argh::from_env();
-    log::info!("Version {}", VERSION);
+    VERSION
+        .set(args.set_revision.unwrap_or_else(|| {
+            git_version::git_version!(fallback = "unknown").to_string()
+        }))
+        .unwrap();
+    log::info!("Version {}", version());
     match args.subcommand {
         SubCommand::Bot(c) => run_bot(&c.config_file).await?,
         SubCommand::Scrape(c) => scrape_log(&c.db_file, &c.log_file)?,
