@@ -161,7 +161,6 @@ pub struct TelegramConfig {
     pub token: String,
     pub forward_channel: ChatId,
     pub admins: Vec<UserId>,
-    pub residential_chats: Vec<ChatId>,
     pub chats: TelegramConfigChats,
 }
 

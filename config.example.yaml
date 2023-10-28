@@ -10,11 +10,6 @@ telegram:
   # Bot administrators
   admins: [1234567890]
 
-  # List of chats considered as residents-only.
-  # FIXME: currently unused
-  # TODO: move to 'chats'.
-  residential_chats: [1234567890]
-
   # Configuration for specific chat threads.
   chats:
     # List of threads for 'borrowed_items' module.
