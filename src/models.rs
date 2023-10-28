@@ -159,7 +159,6 @@ pub struct Config {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TelegramConfig {
     pub token: String,
-    pub forward_channel: ChatId,
     pub admins: Vec<UserId>,
     pub chats: TelegramConfigChats,
 }
@@ -173,6 +172,7 @@ pub struct TelegramConfigThread {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TelegramConfigChats {
     pub borrowed_items: Vec<TelegramConfigThread>,
+    pub forward_channel: ChatId,
     pub wikijs_updates: TelegramConfigThread,
 }
 

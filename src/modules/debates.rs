@@ -261,7 +261,7 @@ pub async fn debate_send<'a>(
 
     let msg_backup = bot
         .forward_message(
-            env.config.telegram.forward_channel,
+            env.config.telegram.chats.forward_channel,
             msg.chat.id,
             msg.id,
         )

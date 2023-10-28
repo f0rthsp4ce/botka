@@ -3,10 +3,6 @@ telegram:
   # Token provided by Telegram's BotFather for authentication.
   token: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
 
-  # The ID of the backup message channel for the debates module.
-  # Bot maintainer is supposed to create private channel and add bot into it.
-  forward_channel: -1001234567890
-
   # Bot administrators
   admins: [1234567890]
 
@@ -15,6 +11,10 @@ telegram:
     # List of threads for 'borrowed_items' module.
     borrowed_items:
       - { chat: -1001234567890, thread: 123 }
+
+    # The ID of the backup message channel for the debates module.
+    # Bot maintainer is supposed to create private channel and add bot into it.
+    forward_channel: -1001234567890
 
     # Chat to push Wiki.js update notifications.
     wikijs_updates: { chat: -1001234567890, thread: 123 }
