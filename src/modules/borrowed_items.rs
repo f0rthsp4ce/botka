@@ -30,7 +30,8 @@ pub fn callback_handler() -> CommandHandler<Result<()>> {
 fn filter_messages_in_topic(env: Arc<BotEnv>, msg: Message) -> bool {
     env.config
         .telegram
-        .borrowed_items_threads
+        .chats
+        .borrowed_items
         .iter()
         .any(|c| msg.chat.id == c.chat && msg.thread_id == Some(c.thread))
 }

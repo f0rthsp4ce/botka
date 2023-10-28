@@ -15,13 +15,12 @@ telegram:
   # TODO: move to 'chats'.
   residential_chats: [1234567890]
 
-  # List of threads for 'borrowed_items' module.
-  # TODO: move to 'chats'.
-  borrowed_items_threads:
-    - { chat: -1001234567890, thread: 123 }
-
   # Configuration for specific chat threads.
   chats:
+    # List of threads for 'borrowed_items' module.
+    borrowed_items:
+      - { chat: -1001234567890, thread: 123 }
+
     # Chat to push Wiki.js update notifications.
     wikijs_updates: { chat: -1001234567890, thread: 123 }
 
