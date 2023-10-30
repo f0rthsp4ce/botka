@@ -14,7 +14,7 @@ use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, Message};
 use teloxide::utils::html;
 
 use crate::common::{
-    filter_command, format_user2, BotEnv, CommandHandler, HasCommandRules,
+    filter_command, format_user, BotEnv, CommandHandler, HasCommandRules,
 };
 use crate::db::DbUserId;
 use crate::utils::{write_message_link, BotExt};
@@ -153,7 +153,7 @@ fn command_needs_message_and_buttons(
             item.request_message_id,
         );
         write!(text, "by ").unwrap();
-        format_user2(&mut text, item.request_user_id, &user, false);
+        format_user(&mut text, item.request_user_id, &user, false);
         text.push_str("</a>)\n");
 
         write!(button_text, ". {}", item.item).unwrap();

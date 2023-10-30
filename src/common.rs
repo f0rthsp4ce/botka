@@ -139,7 +139,12 @@ pub(crate) use HasCommandRules;
 
 pub fn format_users<'a>(
     out: &mut String,
-    iter: impl Iterator<Item = (DbUserId, &'a Option<crate::models::TgUser>)>,
+    iter: impl Iterator<
+        Item = (
+            impl Into<UserId>,
+            impl Into<Option<&'a crate::models::TgUser>>,
+        ),
+    >,
 ) {
     let mut first = true;
     for (tg_id, user) in iter {
@@ -148,30 +153,22 @@ pub fn format_users<'a>(
         } else {
             out.push_str(", ");
         }
-        format_user(out, tg_id, user);
+        format_user(out, tg_id, user, true);
     }
     if first {
         out.push_str("(no one)");
     }
 }
 
-pub fn format_user(
+pub fn format_user<'a>(
     out: &mut String,
-    tg_id: DbUserId,
-    user: &Option<crate::models::TgUser>,
-) {
-    format_user2(out, tg_id, user, true);
-}
-
-pub fn format_user2(
-    out: &mut String,
-    tg_id: DbUserId,
-    user: &Option<crate::models::TgUser>,
+    tg_id: impl Into<UserId>,
+    user: impl Into<Option<&'a crate::models::TgUser>>,
     link: bool,
 ) {
-    match user {
+    match user.into() {
         None => {
-            write!(out, "id={} (unknown)", UserId::from(tg_id).0).unwrap();
+            write!(out, "id={} (unknown)", tg_id.into().0).unwrap();
         }
         Some(u) => {
             if link {

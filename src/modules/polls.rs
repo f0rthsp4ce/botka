@@ -363,7 +363,7 @@ fn poll_text(
     let mut text = String::new();
 
     text.push_str("Poll by ");
-    format_user(&mut text, creator.0, &creator.1);
+    format_user(&mut text, creator.0, &creator.1, true);
     text.push_str(". ");
 
     if non_voters.is_empty() {
