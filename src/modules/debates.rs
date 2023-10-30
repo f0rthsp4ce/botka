@@ -10,11 +10,11 @@ use teloxide::utils::html;
 use teloxide::RequestError;
 
 use crate::common::{
-    filter_command, format_users, BotEnv, CommandHandler, MyDialogue, State,
+    filter_command, format_users, BotEnv, CommandHandler, HasCommandRules,
+    MyDialogue, State,
 };
 use crate::db::DbUserId;
 use crate::utils::BotExt;
-use crate::HasCommandRules;
 
 #[derive(BotCommands, Clone, HasCommandRules!)]
 #[command(rename_rule = "snake_case")]

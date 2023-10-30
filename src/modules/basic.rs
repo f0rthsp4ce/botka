@@ -14,11 +14,12 @@ use teloxide::utils::command::BotCommands;
 use teloxide::utils::html;
 
 use crate::common::{
-    filter_command, format_users, BotEnv, CommandHandler, MyDialogue, State,
+    filter_command, format_users, BotEnv, CommandHandler, HasCommandRules,
+    MyDialogue, State,
 };
 use crate::db::{DbChatId, DbUserId};
 use crate::utils::{write_message_link, BotExt};
-use crate::{models, schema, HasCommandRules};
+use crate::{models, schema};
 
 #[derive(BotCommands, Clone, HasCommandRules!)]
 #[command(

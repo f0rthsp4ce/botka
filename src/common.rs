@@ -51,7 +51,7 @@ impl Default for CommandRules {
     }
 }
 
-pub trait HasCommandRules {
+pub trait HasCommandRulesTrait {
     fn command_rules(&self) -> CommandRules;
 }
 
@@ -76,7 +76,6 @@ impl BotEnv {
 
 /// Derive macro for `HasCommandRules` trait. Should be applied with
 /// `macro_rules_attribute::derive`.
-#[macro_export]
 macro_rules! HasCommandRules {
     (
         $( #[ $_attr:meta ] )*
@@ -88,7 +87,7 @@ macro_rules! HasCommandRules {
             ),* $(,)?
         }
     ) => {
-        impl $crate::common::HasCommandRules for $name {
+        impl $crate::common::HasCommandRulesTrait for $name {
             fn command_rules(&self) -> $crate::common::CommandRules {
                 match self {
                     $(
@@ -135,6 +134,8 @@ macro_rules! HasCommandRules {
     (impl skip_item_args; $v:ident ) => { Self::$v };
     (impl skip_item_args; $v:ident($($t:ty),+) ) => { Self::$v(..) };
 }
+
+pub(crate) use HasCommandRules;
 
 pub fn format_users<'a>(
     out: &mut String,
@@ -193,7 +194,7 @@ pub fn format_user2(
 #[must_use]
 pub fn filter_command<C, Output>() -> CommandHandler<Output>
 where
-    C: BotCommands + HasCommandRules + Send + Sync + 'static,
+    C: BotCommands + HasCommandRulesTrait + Send + Sync + 'static,
     Output: Send + Sync + 'static,
 {
     dptree::filter_map_async(filter_command2::<C>)
@@ -206,7 +207,7 @@ async fn filter_command2<C>(
     env: Arc<BotEnv>,
 ) -> Option<C>
 where
-    C: BotCommands + HasCommandRules + Send + Sync + 'static,
+    C: BotCommands + HasCommandRulesTrait + Send + Sync + 'static,
 {
     let cmd = C::parse(msg.text()?, &me.user.username?).ok()?;
     let rules = cmd.command_rules();

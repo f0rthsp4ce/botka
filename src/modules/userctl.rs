@@ -7,10 +7,9 @@ use macro_rules_attribute::derive;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
 
-use crate::common::{filter_command, BotEnv, CommandHandler};
+use crate::common::{filter_command, BotEnv, CommandHandler, HasCommandRules};
 use crate::db::DbUserId;
 use crate::utils::BotExt;
-use crate::HasCommandRules;
 
 #[derive(BotCommands, Clone, HasCommandRules!)]
 #[command(

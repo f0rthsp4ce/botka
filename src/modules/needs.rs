@@ -13,10 +13,12 @@ use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, Message};
 use teloxide::utils::html;
 
-use crate::common::{filter_command, format_user2, BotEnv, CommandHandler};
+use crate::common::{
+    filter_command, format_user2, BotEnv, CommandHandler, HasCommandRules,
+};
 use crate::db::DbUserId;
 use crate::utils::{write_message_link, BotExt};
-use crate::{models, schema, HasCommandRules};
+use crate::{models, schema};
 
 #[derive(Debug, BotCommands, Clone, HasCommandRules!)]
 #[command(rename_rule = "snake_case")]
