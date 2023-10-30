@@ -4,12 +4,12 @@ use std::net::SocketAddr;
 use diesel::prelude::*;
 use salvo_oapi::ToSchema;
 use serde::{Deserialize, Serialize};
-use teloxide::types::{ChatId, ChatMember, ThreadId, UserId};
+use teloxide::types::{ChatId, ChatMember, UserId};
 
 use crate::db::{
     config_option_def, DbChatId, DbMessageId, DbThreadId, DbUserId,
 };
-use crate::utils::Sqlizer;
+use crate::utils::{Sqlizer, ThreadIdPair};
 
 // Database models
 
@@ -188,18 +188,12 @@ pub struct TelegramConfig {
     pub chats: TelegramConfigChats,
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
-pub struct TelegramConfigThread {
-    pub chat: ChatId,
-    pub thread: ThreadId,
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TelegramConfigChats {
-    pub borrowed_items: Vec<TelegramConfigThread>,
+    pub borrowed_items: Vec<ThreadIdPair>,
     pub forward_channel: ChatId,
-    pub needs: TelegramConfigThread,
-    pub wikijs_updates: TelegramConfigThread,
+    pub needs: ThreadIdPair,
+    pub wikijs_updates: ThreadIdPair,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

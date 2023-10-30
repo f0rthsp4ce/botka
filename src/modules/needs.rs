@@ -30,9 +30,7 @@ pub fn message_handler() -> CommandHandler<Result<()>> {
         .branch(filter_command::<NeedsCommand, _>().endpoint(handle_command))
         .branch(
             dptree::filter(|env: Arc<BotEnv>, msg: Message| {
-                env.config.telegram.chats.needs.chat == msg.chat.id
-                    && Some(env.config.telegram.chats.needs.thread)
-                        == msg.thread_id
+                env.config.telegram.chats.needs.has_message(&msg)
             })
             .endpoint(handle_message),
         )

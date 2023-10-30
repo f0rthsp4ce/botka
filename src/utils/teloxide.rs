@@ -1,9 +1,10 @@
 use std::fmt::Write;
 
+use serde::{Deserialize, Serialize};
 use teloxide::payloads;
 use teloxide::prelude::*;
 use teloxide::requests::{JsonRequest, MultipartRequest};
-use teloxide::types::{ChatId, InputFile, MessageId};
+use teloxide::types::{ChatId, InputFile, MessageId, ThreadId};
 
 pub trait BotExt {
     fn reply_message<T: Into<String>>(
@@ -60,6 +61,18 @@ impl BotExt for Bot {
             self.send_photo(msg.chat.id, photo).reply_to_message_id(msg.id);
         reply.message_thread_id = msg.thread_id;
         reply
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+pub struct ThreadIdPair {
+    pub chat: ChatId,
+    pub thread: ThreadId,
+}
+
+impl ThreadIdPair {
+    pub fn has_message(&self, msg: &Message) -> bool {
+        self.chat == msg.chat.id && Some(self.thread) == msg.thread_id
     }
 }
 
