@@ -10,14 +10,12 @@ use itertools::Itertools;
 use macro_rules_attribute::derive;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
-use teloxide::types::{
-    InlineKeyboardButton, InlineKeyboardMarkup, Message, MessageId,
-};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, Message};
 use teloxide::utils::html;
 
 use crate::common::{filter_command, format_user2, BotEnv, CommandHandler};
 use crate::db::DbUserId;
-use crate::utils::BotExt;
+use crate::utils::{write_message_link, BotExt};
 use crate::{models, schema, HasCommandRules};
 
 #[derive(Debug, BotCommands, Clone, HasCommandRules!)]
@@ -148,14 +146,13 @@ fn command_needs_message_and_buttons(
             letter_index(&mut button_text, idx2);
         }
 
-        write!(
-            text,
-            ". {} (<a href=\"https://t.me/c/{}/{}\">by ",
-            html::escape(&item.item),
-            -ChatId::from(item.request_chat_id).0 - 1_000_000_000_000,
-            MessageId::from(item.request_message_id),
-        )
-        .unwrap();
+        write!(text, ". {} (", html::escape(&item.item)).unwrap();
+        write_message_link(
+            &mut text,
+            item.request_chat_id,
+            item.request_message_id,
+        );
+        write!(text, "by ").unwrap();
         format_user2(&mut text, item.request_user_id, &user, false);
         text.push_str("</a>)\n");
 

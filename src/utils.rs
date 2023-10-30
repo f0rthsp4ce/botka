@@ -9,4 +9,4 @@ pub use log_error::ResultExt;
 pub use parsers::deserealize_duration;
 pub use wikijs::{get_wikijs_updates, WikiJsUpdateState};
 
-pub use self::teloxide::BotExt;
+pub use self::teloxide::{write_message_link, BotExt};

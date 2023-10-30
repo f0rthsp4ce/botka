@@ -1,7 +1,9 @@
+use std::fmt::Write;
+
 use teloxide::payloads;
 use teloxide::prelude::*;
 use teloxide::requests::{JsonRequest, MultipartRequest};
-use teloxide::types::InputFile;
+use teloxide::types::{ChatId, InputFile, MessageId};
 
 pub trait BotExt {
     fn reply_message<T: Into<String>>(
@@ -59,4 +61,18 @@ impl BotExt for Bot {
         reply.message_thread_id = msg.thread_id;
         reply
     }
+}
+
+pub fn write_message_link(
+    out: &mut String,
+    chat_id: impl Into<ChatId>,
+    message_id: impl Into<MessageId>,
+) {
+    write!(
+        out,
+        "<a href=\"https://t.me/c/{}/{}\">",
+        -chat_id.into().0 - 1_000_000_000_000,
+        message_id.into(),
+    )
+    .unwrap();
 }

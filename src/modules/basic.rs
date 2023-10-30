@@ -17,7 +17,7 @@ use crate::common::{
     filter_command, format_users, BotEnv, CommandHandler, MyDialogue, State,
 };
 use crate::db::{DbChatId, DbUserId};
-use crate::utils::BotExt;
+use crate::utils::{write_message_link, BotExt};
 use crate::{models, schema, HasCommandRules};
 
 #[derive(BotCommands, Clone, HasCommandRules!)]
@@ -322,13 +322,7 @@ fn render_topic_link(
     emojis: &HashMap<String, String>,
     topic: &models::TgChatTopic,
 ) {
-    write!(
-        out,
-        "<a href=\"https://t.me/c/{}/{}\">",
-        -ChatId::from(topic.chat_id).0 - 1_000_000_000_000,
-        ThreadId::from(topic.topic_id),
-    )
-    .unwrap();
+    write_message_link(out, topic.chat_id, ThreadId::from(topic.topic_id).0);
 
     out.push_str(
         topic
