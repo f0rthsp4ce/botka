@@ -159,19 +159,31 @@ pub fn format_user(
     tg_id: DbUserId,
     user: &Option<crate::models::TgUser>,
 ) {
+    format_user2(out, tg_id, user, true);
+}
+
+pub fn format_user2(
+    out: &mut String,
+    tg_id: DbUserId,
+    user: &Option<crate::models::TgUser>,
+    link: bool,
+) {
     match user {
         None => {
             write!(out, "id={} (unknown)", UserId::from(tg_id).0).unwrap();
         }
         Some(u) => {
-            if let Some(username) = &u.username {
-                write!(out, "<a href=\"https://t.me/{username}\">").unwrap();
+            if link {
+                if let Some(username) = &u.username {
+                    write!(out, "<a href=\"https://t.me/{username}\">")
+                        .unwrap();
+                }
             }
             write!(out, "{}", escape(&u.first_name)).unwrap();
             if let Some(last_name) = &u.last_name {
                 write!(out, " {}", escape(last_name)).unwrap();
             }
-            if u.username.is_some() {
+            if link && u.username.is_some() {
                 write!(out, "</a>").unwrap();
             }
         }

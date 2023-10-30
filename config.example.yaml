@@ -16,6 +16,9 @@ telegram:
     # Bot maintainer is supposed to create private channel and add bot into it.
     forward_channel: -1001234567890
 
+    # Thread for the 'needs' module.
+    needs: { chat: -1001234567890, thread: 123 }
+
     # Chat to push Wiki.js update notifications.
     wikijs_updates: { chat: -1001234567890, thread: 123 }
 

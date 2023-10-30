@@ -22,6 +22,19 @@ diesel::table! {
 }
 
 diesel::table! {
+    needed_items (rowid) {
+        rowid -> Integer,
+        request_chat_id -> BigInt,
+        request_message_id -> Integer,
+        request_user_id -> BigInt,
+        pinned_chat_id -> BigInt,
+        pinned_message_id -> Integer,
+        buyer_user_id -> Nullable<BigInt>,
+        item -> Text,
+    }
+}
+
+diesel::table! {
     options (name) {
         name -> Text,
         value -> Text,
@@ -100,6 +113,7 @@ diesel::joinable!(forwards -> tg_users (orig_chat_id));
 diesel::allow_tables_to_appear_in_same_query!(
     borrowed_items,
     forwards,
+    needed_items,
     options,
     residents,
     tg_chat_topics,

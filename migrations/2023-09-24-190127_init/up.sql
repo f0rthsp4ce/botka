@@ -82,3 +82,18 @@ CREATE TABLE borrowed_items (
   items TEXT NOT NULL,
   PRIMARY KEY (chat_id, user_message_id)
 );
+
+CREATE TABLE needed_items (
+  rowid INTEGER PRIMARY KEY NOT NULL,
+
+  request_chat_id BIGINT NOT NULL,
+  request_message_id INTEGER NOT NULL,
+  request_user_id BIGINT NOT NULL,
+
+  pinned_chat_id BIGINT NOT NULL,
+  pinned_message_id INTEGER NOT NULL,
+
+  buyer_user_id BIGINT,
+
+  item TEXT NOT NULL
+);

@@ -135,6 +135,31 @@ pub struct BorrowedItem {
     pub returned: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = crate::schema::needed_items)]
+pub struct NewNeededItem<'a> {
+    pub request_chat_id: DbChatId,
+    pub request_message_id: DbMessageId,
+    pub request_user_id: DbUserId,
+    pub pinned_chat_id: DbChatId,
+    pub pinned_message_id: DbMessageId,
+    pub buyer_user_id: Option<DbUserId>,
+    pub item: &'a str,
+}
+
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = crate::schema::needed_items)]
+pub struct NeededItem2 {
+    pub rowid: i32,
+    pub request_chat_id: DbChatId,
+    pub request_message_id: DbMessageId,
+    pub request_user_id: DbUserId,
+    pub pinned_chat_id: DbChatId,
+    pub pinned_message_id: DbMessageId,
+    pub buyer_user_id: Option<DbUserId>,
+    pub item: String,
+}
+
 // Database option models
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -163,7 +188,7 @@ pub struct TelegramConfig {
     pub chats: TelegramConfigChats,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct TelegramConfigThread {
     pub chat: ChatId,
     pub thread: ThreadId,
@@ -173,6 +198,7 @@ pub struct TelegramConfigThread {
 pub struct TelegramConfigChats {
     pub borrowed_items: Vec<TelegramConfigThread>,
     pub forward_channel: ChatId,
+    pub needs: TelegramConfigThread,
     pub wikijs_updates: TelegramConfigThread,
 }
 

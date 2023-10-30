@@ -142,10 +142,12 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     )
                     .branch(modules::polls::message_handler())
                     .branch(modules::borrowed_items::command_handler())
+                    .branch(modules::needs::message_handler())
                     .endpoint(drop_endpoint),
             )
             .branch(
                 Update::filter_callback_query()
+                    .branch(modules::needs::callback_handler())
                     .branch(modules::polls::callback_handler())
                     .branch(modules::borrowed_items::callback_handler())
                     .endpoint(drop_callback_query),
