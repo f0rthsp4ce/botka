@@ -234,7 +234,7 @@ async fn handle_callback_bought(
 
         diesel::update(schema::needed_items::table)
             .filter(rowid.eq(rowid_))
-            .set(buyer_user_id.eq(Some(item_.request_user_id)))
+            .set(buyer_user_id.eq(DbUserId::from(callback.from.id)))
             .execute(conn)?;
 
         let remaining: i64 = schema::needed_items::table
