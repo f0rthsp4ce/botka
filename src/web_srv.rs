@@ -100,27 +100,13 @@ async fn get_index() -> Text<String> {
 
 /// Prometheus metrics endpoint.
 #[endpoint()]
-#[allow(clippy::cast_precision_loss)]
 async fn get_metrics() -> String {
-    let resident_count = schema::residents::table
-        .filter(schema::residents::end_date.is_null())
-        .count()
-        .get_result::<i64>(&mut *state().conn.lock().unwrap())
-        .unwrap_or_default() as f64;
-    metrics::describe_gauge!("botka_residents", "Number of residents.");
-    metrics::gauge!("botka_residents", resident_count);
-
-    let db = &state().config.db;
-    let db_size = std::fs::metadata(db.strip_prefix("sqlite://").unwrap_or(db))
-        .map(|m| m.len())
-        .unwrap_or_default() as f64;
-    metrics::describe_gauge!(
-        "botka_db_size_bytes",
-        "Size of the database file in bytes."
+    let state = state();
+    crate::metrics::refresh(
+        &mut state.conn.lock().unwrap(),
+        state.config.as_ref(),
     );
-    metrics::gauge!("botka_db_size_bytes", db_size);
-
-    state().prometheus.render()
+    state.prometheus.render()
 }
 
 /// Get a list of current residents.

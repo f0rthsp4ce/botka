@@ -1,3 +1,7 @@
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
+
+use crate::models::Config;
+
 #[allow(clippy::module_name_repetitions)] // For conistency with other modules.
 pub fn register_metrics() {
     // Descriptions of labeled metrics
@@ -33,6 +37,31 @@ pub fn register_metrics() {
         1.0,
         "revision" => crate::version(),
     );
+}
+
+/// Refresh some metrics before dumping them.
+#[allow(clippy::cast_precision_loss)] // Rounding errors are fine here.
+pub fn refresh(conn: &mut SqliteConnection, config: &Config) {
+    // botka_residents
+    use crate::schema::residents::dsl as r;
+    let resident_count = r::residents
+        .filter(r::end_date.is_null())
+        .count()
+        .get_result::<i64>(conn)
+        .unwrap_or_default() as f64;
+    metrics::describe_gauge!("botka_residents", "Number of residents.");
+    metrics::gauge!("botka_residents", resident_count);
+
+    // botka_db_size_bytes
+    let db = &config.db;
+    let db_size = std::fs::metadata(db.strip_prefix("sqlite://").unwrap_or(db))
+        .map(|m| m.len())
+        .unwrap_or_default() as f64;
+    metrics::describe_gauge!(
+        "botka_db_size_bytes",
+        "Size of the database file in bytes."
+    );
+    metrics::gauge!("botka_db_size_bytes", db_size);
 }
 
 pub fn update_service(name: &'static str, success: bool) {
