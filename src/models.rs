@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use diesel::prelude::*;
 use salvo_oapi::ToSchema;
 use serde::{Deserialize, Serialize};
-use teloxide::types::{ChatId, ChatMember, UserId};
+use teloxide::types::{ChatId, ChatMember, MessageId, UserId};
 
 use crate::db::{
     config_option_def, DbChatId, DbMessageId, DbThreadId, DbUserId,
@@ -167,8 +167,15 @@ pub struct Debate {
     pub started_at: chrono::DateTime<chrono::Utc>,
     pub description: String,
 }
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
+pub struct NeedsLastPin {
+    #[serde(flatten)]
+    pub thread_id_pair: ThreadIdPair,
+    pub message_id: MessageId,
+}
 config_option_def!(debate, Debate);
 config_option_def!(wikijs_update_state, crate::utils::WikiJsUpdateState);
+config_option_def!(needs_last_pin, NeedsLastPin);
 
 // Config models
 

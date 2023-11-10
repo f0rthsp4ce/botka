@@ -10,14 +10,19 @@ use itertools::Itertools;
 use macro_rules_attribute::derive;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, Message};
+use teloxide::types::{
+    InlineKeyboardButton, InlineKeyboardMarkup, Message, MessageId,
+};
 use teloxide::utils::html;
 
 use crate::common::{
     filter_command, format_user, BotEnv, CommandHandler, HasCommandRules,
 };
 use crate::db::DbUserId;
-use crate::utils::{replace_urls_with_titles, write_message_link, BotExt};
+use crate::utils::{
+    replace_urls_with_titles, write_message_link, BotExt, ResultExt,
+    ThreadIdPair,
+};
 use crate::{models, schema};
 
 #[derive(Debug, BotCommands, Clone, HasCommandRules!)]
@@ -82,6 +87,8 @@ async fn handle_message(
 
     bot.pin_chat_message(msg.chat.id, msg.id).await?;
 
+    update_pinned_needs_message(&bot, &env).await?;
+
     Ok(())
 }
 
@@ -97,8 +104,58 @@ async fn handle_command(
 }
 
 async fn command_needs(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
+    // Delete old pinned message (if it is the needs thread)
+    if let Some(thread_pair) = check_thread_id(&env.config, &msg) {
+        let last_pin = models::needs_last_pin.get(&mut env.conn())?;
+        if let Some(pin) = last_pin {
+            if pin.thread_id_pair == thread_pair {
+                bot.delete_message(pin.thread_id_pair.chat, pin.message_id)
+                    .await
+                    .log_error("Failed to delete old pinned message");
+            }
+        }
+    }
+
+    // Send new message
+    let (text, buttons) = command_needs_message_and_buttons(&env)?;
+    let msg = bot
+        .reply_message(&msg, text)
+        .parse_mode(teloxide::types::ParseMode::Html)
+        .disable_web_page_preview(true)
+        .reply_markup(InlineKeyboardMarkup::new(buttons))
+        .await?;
+
+    // Pin new message (if it is the needs thread)
+    if let Some(thread_id_pair) = check_thread_id(&env.config, &msg) {
+        bot.pin_chat_message(thread_id_pair.chat, msg.id).await?;
+        models::needs_last_pin.set(
+            &mut env.conn(),
+            &models::NeedsLastPin { thread_id_pair, message_id: msg.id },
+        )?;
+    }
+
+    Ok(())
+}
+
+/// `Some` for the needs thread, `None` otherwise.
+fn check_thread_id(
+    config: &models::Config,
+    msg: &Message,
+) -> Option<ThreadIdPair> {
+    msg.thread_id
+        .map(|thread| ThreadIdPair { chat: msg.chat.id, thread })
+        .filter(|p| p == &config.telegram.chats.needs)
+}
+
+/// Update `/needs` message.
+async fn edit_list_message(
+    bot: &Bot,
+    env: &BotEnv,
+    chat: ChatId,
+    message: MessageId,
+) -> Result<()> {
     let (text, buttons) = command_needs_message_and_buttons(env)?;
-    bot.reply_message(&msg, text)
+    bot.edit_message_text(chat, message, text)
         .parse_mode(teloxide::types::ParseMode::Html)
         .disable_web_page_preview(true)
         .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -106,8 +163,19 @@ async fn command_needs(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
     Ok(())
 }
 
+/// Update last pinned `/needs` message.
+async fn update_pinned_needs_message(bot: &Bot, env: &BotEnv) -> Result<()> {
+    let last_pin = models::needs_last_pin.get(&mut env.conn())?;
+    if let Some(pin) = last_pin {
+        edit_list_message(bot, env, pin.thread_id_pair.chat, pin.message_id)
+            .await
+            .log_error("Cannot edit last pin");
+    }
+    Ok(())
+}
+
 fn command_needs_message_and_buttons(
-    env: Arc<BotEnv>,
+    env: &BotEnv,
 ) -> Result<(String, Vec<Vec<InlineKeyboardButton>>)> {
     let items: Vec<(models::NeededItem2, Option<models::TgUser>)> =
         schema::needed_items::table
@@ -271,17 +339,16 @@ async fn handle_callback_bought(
     .reply_markup(InlineKeyboardMarkup::new(vec![vec![
         InlineKeyboardButton::callback("Undo", format!("n:undo:{rowid_}")),
     ]]))
-    .await?;
-
-    let (text, buttons) = command_needs_message_and_buttons(env)?;
+    .await
+    .log_error("Cannot send message to needs thread");
 
     if let Some(message) = callback.message {
-        bot.edit_message_text(message.chat.id, message.id, text)
-            .parse_mode(teloxide::types::ParseMode::Html)
-            .disable_web_page_preview(true)
-            .reply_markup(InlineKeyboardMarkup::new(buttons))
-            .await?;
+        edit_list_message(&bot, &env, message.chat.id, message.id)
+            .await
+            .log_error("Cannot edit callback message");
     }
+    update_pinned_needs_message(&bot, &env).await?;
+
     Ok(())
 }
 

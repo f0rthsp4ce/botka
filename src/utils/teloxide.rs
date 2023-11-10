@@ -64,7 +64,7 @@ impl BotExt for Bot {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
 pub struct ThreadIdPair {
     pub chat: ChatId,
     pub thread: ThreadId,
