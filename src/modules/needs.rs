@@ -17,7 +17,7 @@ use crate::common::{
     filter_command, format_user, BotEnv, CommandHandler, HasCommandRules,
 };
 use crate::db::DbUserId;
-use crate::utils::{write_message_link, BotExt};
+use crate::utils::{replace_urls_with_titles, write_message_link, BotExt};
 use crate::{models, schema};
 
 #[derive(Debug, BotCommands, Clone, HasCommandRules!)]
@@ -61,12 +61,13 @@ async fn handle_message(
     if list_items.is_empty() {
         return Ok(());
     }
+    let list_items = replace_urls_with_titles(&list_items).await;
 
     diesel::insert_into(schema::needed_items::table)
         .values(
             list_items
                 .iter()
-                .map(|&item| models::NewNeededItem {
+                .map(|item| models::NewNeededItem {
                     request_chat_id: msg.chat.id.into(),
                     request_message_id: msg.id.into(),
                     request_user_id: user.id.into(),
