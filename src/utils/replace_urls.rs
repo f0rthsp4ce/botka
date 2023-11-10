@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
-use tap::Pipe;
 
 lazy_static::lazy_static! {
     static ref URL_REGEX: regex::Regex =
@@ -57,8 +56,8 @@ pub async fn replace_urls_with_titles(texts: &[&str]) -> Vec<String> {
                 link.clone()
             });
             (link, title)
-        })
-        .pipe(futures::future::join_all)
+        });
+    let link_texts = futures::future::join_all(link_texts)
         .await
         .into_iter()
         .collect::<HashMap<_, _>>();
