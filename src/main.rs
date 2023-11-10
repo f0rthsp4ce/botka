@@ -128,7 +128,8 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     let mut dispatcher = Dispatcher::builder(
         bot.clone(),
         dptree::entry()
-            .inspect(modules::tg_scraper::scrape)
+            .inspect(modules::tg_scraper::scrape) // should be the first handler
+            .inspect(modules::resident_tracker::handle_update)
             .branch(
                 Update::filter_message()
                     .enter_dialogue::<Message, InMemStorage<State>, State>()

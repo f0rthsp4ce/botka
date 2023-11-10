@@ -190,6 +190,7 @@ pub struct TelegramConfig {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TelegramConfigChats {
+    pub residential: Vec<ChatId>,
     pub borrowed_items: Vec<ThreadIdPair>,
     pub forward_channel: ChatId,
     pub needs: ThreadIdPair,

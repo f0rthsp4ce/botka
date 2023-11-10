@@ -8,6 +8,9 @@ telegram:
 
   # Configuration for specific chat threads.
   chats:
+    # List of chats considered as residents-only.
+    residential: [1234567890]
+
     # List of threads for 'borrowed_items' module.
     borrowed_items:
       - { chat: -1001234567890, thread: 123 }
