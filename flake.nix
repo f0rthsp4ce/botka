@@ -30,8 +30,7 @@
             # rust-src is required for rust-analyzer
             extensions = [ "rust-src" ];
           };
-          baseRuntimeDeps =
-            [ pkgs.bash pkgs.hello pkgs.imagemagick pkgs.sqlite ];
+          baseRuntimeDeps = [ pkgs.bash pkgs.imagemagick pkgs.sqlite ];
           allRuntimeDeps = baseRuntimeDeps ++ [ residents-timeline ];
           buildDeps = [ pkgs.openssl pkgs.perl pkgs.pkg-config pkgs.sqlite ];
           residents-timeline = pkgs.buildNpmPackage rec {
