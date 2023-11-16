@@ -104,12 +104,14 @@ impl<'a> ScrapedInfo<'a> {
             UpdateKind::Message(msg)
             | UpdateKind::ChannelPost(msg)
             | UpdateKind::EditedMessage(msg)
-            | UpdateKind::EditedChannelPost(msg) => self.scrape_message(msg),
+            | UpdateKind::EditedChannelPost(msg) => {
+                self.scrape_message(msg, true);
+            }
             UpdateKind::InlineQuery(q) => self.scrape_user(&q.from),
             UpdateKind::ChosenInlineResult(r) => self.scrape_user(&r.from),
             UpdateKind::CallbackQuery(q) => {
                 self.scrape_user(&q.from);
-                q.message.as_ref().map(|m| self.scrape_message(m));
+                q.message.as_ref().map(|m| self.scrape_message(m, false));
             }
             UpdateKind::ShippingQuery(q) => self.scrape_user(&q.from),
             UpdateKind::PreCheckoutQuery(q) => self.scrape_user(&q.from),
@@ -130,15 +132,17 @@ impl<'a> ScrapedInfo<'a> {
         }
     }
 
-    fn scrape_message(&mut self, msg: &'a Message) {
+    fn scrape_message(&mut self, msg: &'a Message, new: bool) {
         if let Some(from) = &msg.from {
             self.scrape_user(from);
-            self.user_in_chat = Some(models::NewTgUserInChat {
-                chat_id: msg.chat.id.into(),
-                user_id: from.id.into(),
-                chat_member: None,
-                seen: true,
-            });
+            if new {
+                self.user_in_chat = Some(models::NewTgUserInChat {
+                    chat_id: msg.chat.id.into(),
+                    user_id: from.id.into(),
+                    chat_member: None,
+                    seen: true,
+                });
+            }
         }
         match &msg.kind {
             MessageKind::Common(k) => {
@@ -147,7 +151,9 @@ impl<'a> ScrapedInfo<'a> {
                     Some(ForwardedFrom::Chat(c)) => self.scrape_chat(c),
                     _ => (),
                 }
-                k.reply_to_message.as_deref().map(|r| self.scrape_message(r));
+                k.reply_to_message
+                    .as_deref()
+                    .map(|r| self.scrape_message(r, false));
             }
             MessageKind::NewChatMembers(k) => {
                 for user in &k.new_chat_members {
@@ -157,7 +163,7 @@ impl<'a> ScrapedInfo<'a> {
             MessageKind::LeftChatMember(k) => {
                 self.scrape_user(&k.left_chat_member);
             }
-            MessageKind::Pinned(k) => self.scrape_message(&k.pinned),
+            MessageKind::Pinned(k) => self.scrape_message(&k.pinned, false),
             MessageKind::ProximityAlertTriggered(k) => {
                 self.scrape_user(&k.proximity_alert_triggered.traveler);
                 self.scrape_user(&k.proximity_alert_triggered.watcher);
