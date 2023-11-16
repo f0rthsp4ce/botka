@@ -12,12 +12,11 @@ use crate::db::DbUserId;
 use crate::utils::BotExt;
 
 #[derive(BotCommands, Clone, HasCommandRules!)]
-#[command(
-    rename_rule = "snake_case",
-    description = "These commands are supported:"
-)]
-enum UserctlCommand {
-    #[command(description = "control personal configuration.")]
+#[command(rename_rule = "snake_case")]
+pub enum Commands {
+    #[command(
+        description = "control personal configuration, see <code>/userctl --help</code>."
+    )]
     Userctl(String),
 }
 
@@ -34,14 +33,14 @@ struct UserctlArgs {
 }
 
 pub fn command_handler() -> CommandHandler<Result<()>> {
-    filter_command::<UserctlCommand, _>().endpoint(cmd_userctl)
+    filter_command::<Commands, _>().endpoint(cmd_userctl)
 }
 
 async fn cmd_userctl(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-    UserctlCommand::Userctl(args): UserctlCommand,
+    Commands::Userctl(args): Commands,
 ) -> Result<()> {
     let Some(from) = &msg.from else { return Ok(()) };
     let args = args.split_whitespace().collect::<Vec<_>>();

@@ -19,7 +19,7 @@ use crate::utils::BotExt;
 #[derive(BotCommands, Clone, HasCommandRules!)]
 #[command(rename_rule = "snake_case")]
 #[allow(clippy::enum_variant_names)]
-enum DebateCommand {
+pub enum Commands {
     #[command(description = "send debate message.")]
     #[custom(in_group = false, resident = true)]
     DebateSend,
@@ -38,7 +38,7 @@ enum DebateCommand {
 }
 
 pub fn command_handler() -> CommandHandler<Result<()>> {
-    filter_command::<DebateCommand, _>().endpoint(handle_debate_command)
+    filter_command::<Commands, _>().endpoint(handle_debate_command)
 }
 
 async fn handle_debate_command<'a>(
@@ -46,20 +46,20 @@ async fn handle_debate_command<'a>(
     dialogue: MyDialogue,
     env: Arc<BotEnv>,
     msg: Message,
-    command: DebateCommand,
+    command: Commands,
 ) -> Result<()> {
     dialogue.update(State::Start).await?;
     match command {
-        DebateCommand::DebateSend => {
+        Commands::DebateSend => {
             bot.reply_message(&msg, "Now send me a message to forward.")
                 .await?;
             dialogue.update(State::Forward).await?;
         }
-        DebateCommand::DebateStatus => cmd_debate_status(bot, env, msg).await?,
-        DebateCommand::DebateStart(description) => {
+        Commands::DebateStatus => cmd_debate_status(bot, env, msg).await?,
+        Commands::DebateStart(description) => {
             cmd_debate_start(bot, env, msg, description).await?;
         }
-        DebateCommand::DebateEnd => cmd_debate_end(bot, env, msg).await?,
+        Commands::DebateEnd => cmd_debate_end(bot, env, msg).await?,
     }
     Ok(())
 }

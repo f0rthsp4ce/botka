@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::io::Write as _;
+use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,18 +16,15 @@ use teloxide::utils::html;
 
 use crate::common::{
     filter_command, format_users, BotEnv, CommandHandler, HasCommandRules,
-    MyDialogue, State,
+    HasCommandRulesTrait, MyDialogue, State,
 };
 use crate::db::{DbChatId, DbUserId};
 use crate::utils::{write_message_link, BotExt};
 use crate::{models, schema};
 
 #[derive(BotCommands, Clone, HasCommandRules!)]
-#[command(
-    rename_rule = "snake_case",
-    description = "These commands are supported:"
-)]
-enum Command {
+#[command(rename_rule = "snake_case")]
+pub enum Commands {
     #[command(description = "display this text.")]
     Help,
 
@@ -40,7 +38,7 @@ enum Command {
     #[command(description = "show status.")]
     Status,
 
-    #[command(description = "show topic list")]
+    #[command(description = "show topic list.")]
     #[custom(in_group = false)]
     Topics,
 
@@ -49,7 +47,7 @@ enum Command {
 }
 
 pub fn command_handler() -> CommandHandler<Result<()>> {
-    filter_command::<Command, _>().endpoint(start)
+    filter_command::<Commands, _>().endpoint(start)
 }
 
 async fn start<'a>(
@@ -57,25 +55,71 @@ async fn start<'a>(
     dialogue: MyDialogue,
     env: Arc<BotEnv>,
     msg: Message,
-    command: Command,
+    command: Commands,
 ) -> Result<()> {
     dialogue.update(State::Start).await?;
     match command {
-        Command::Help => {
-            bot.reply_message(&msg, Command::descriptions().to_string())
-                .await?;
-        }
-        Command::Residents => cmd_list_residents(bot, env, msg).await?,
-        Command::ResidentsTimeline => {
+        Commands::Help => cmd_help(bot, msg).await?,
+        Commands::Residents => cmd_list_residents(bot, env, msg).await?,
+        Commands::ResidentsTimeline => {
             cmd_show_residents_timeline(bot, env, msg).await?;
         }
-        Command::Status => cmd_status(bot, env, msg).await?,
-        Command::Version => {
+        Commands::Status => cmd_status(bot, env, msg).await?,
+        Commands::Version => {
             bot.reply_message(&msg, crate::version()).await?;
         }
-        Command::Topics => cmd_topics(bot, env, msg).await?,
+        Commands::Topics => cmd_topics(bot, env, msg).await?,
     }
     Ok(())
+}
+
+async fn cmd_help(bot: Bot, msg: Message) -> Result<()> {
+    let mut text = String::new();
+    text.push_str("Available commands:\n\n");
+    text.push_str(&commands_help::<crate::modules::basic::Commands>());
+    text.push_str(&commands_help::<crate::modules::needs::Commands>());
+    text.push_str(&commands_help::<crate::modules::userctl::Commands>());
+    if false {
+        // Not much of use for now.
+        text.push_str(&commands_help::<crate::modules::debates::Commands>());
+        // "..., and with ** are available only to bot technicians."
+    }
+    text.push_str("\nCommands marked with * are available only to residents.");
+    bot.reply_message(&msg, text)
+        .parse_mode(teloxide::types::ParseMode::Html)
+        .await?;
+    Ok(())
+}
+
+fn commands_help<T: HasCommandRulesTrait + BotCommands>() -> String {
+    let descriptions = T::descriptions().to_string();
+    let global_description =
+        descriptions.find("\n\n/").map(|i| &descriptions[..i]);
+
+    let mut result = String::new();
+    if let Some(global_description) = global_description {
+        result.push_str(global_description);
+        result.push('\n');
+    }
+    for (cmd, rules) in std::iter::zip(&T::bot_commands(), T::COMMAND_RULES) {
+        result.push_str(&cmd.command);
+        result.push_str(match (rules.admin, rules.resident) {
+            (true, _) => "**",
+            (false, true) => "*",
+            (false, false) => "",
+        });
+        result.push_str(match (rules.in_private, rules.in_group) {
+            (true, true) => "",
+            (true, false) => " (in private)",
+            (false, true) => " (not in private)",
+            (false, false) => " (disabled?)",
+        });
+        result.push_str(" — ");
+        result.push_str(&cmd.description);
+        result.push('\n');
+    }
+
+    result
 }
 
 async fn cmd_list_residents<'a>(
@@ -115,7 +159,7 @@ async fn cmd_show_residents_timeline(
 ) -> Result<()> {
     let db = env.config.db.as_str();
     let db = db.strip_prefix("sqlite://").unwrap_or(db);
-    let svg = std::process::Command::new("f0-residents-timeline")
+    let svg = Command::new("f0-residents-timeline")
         .arg("-sqlite")
         .arg(db)
         .output()?;
@@ -123,7 +167,7 @@ async fn cmd_show_residents_timeline(
         bot.reply_message(&msg, "Failed to generate timeline (svg).").await?;
         return Ok(());
     }
-    let mut png = std::process::Command::new("convert")
+    let mut png = Command::new("convert")
         .arg("svg:-")
         .arg("png:-")
         .stdin(std::process::Stdio::piped())

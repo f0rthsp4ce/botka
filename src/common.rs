@@ -45,13 +45,20 @@ pub struct CommandRules {
     pub in_group: bool,
 }
 
-impl Default for CommandRules {
-    fn default() -> Self {
+impl CommandRules {
+    pub const fn new() -> Self {
         Self { admin: false, resident: false, in_private: true, in_group: true }
     }
 }
 
+impl Default for CommandRules {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub trait HasCommandRulesTrait {
+    const COMMAND_RULES: &'static [CommandRules];
     fn command_rules(&self) -> CommandRules;
 }
 
@@ -88,6 +95,18 @@ macro_rules! HasCommandRules {
         }
     ) => {
         impl $crate::common::HasCommandRulesTrait for $name {
+            const COMMAND_RULES: &'static [$crate::common::CommandRules] =
+                &[
+                    $(
+                        {
+                            #[allow(unused_mut)]
+                            let mut meta = $crate::common::CommandRules::new();
+                            HasCommandRules!(impl set_meta; meta; $( #[ $($attr)* ] )* );
+                            meta
+                        }
+                    ),*
+                ]
+            ;
             fn command_rules(&self) -> $crate::common::CommandRules {
                 match self {
                     $(

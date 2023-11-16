@@ -27,14 +27,15 @@ use crate::{models, schema};
 
 #[derive(Debug, BotCommands, Clone, HasCommandRules!)]
 #[command(rename_rule = "snake_case")]
-enum NeedsCommand {
+pub enum Commands {
+    #[command(description = "show shopping list.")]
     #[custom(resident = true)]
     Needs,
 }
 
 pub fn message_handler() -> CommandHandler<Result<()>> {
     dptree::entry()
-        .branch(filter_command::<NeedsCommand, _>().endpoint(handle_command))
+        .branch(filter_command::<Commands, _>().endpoint(handle_command))
         .branch(
             dptree::filter(|env: Arc<BotEnv>, msg: Message| {
                 env.config.telegram.chats.needs.has_message(&msg)
@@ -96,10 +97,10 @@ async fn handle_command(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-    command: NeedsCommand,
+    command: Commands,
 ) -> Result<()> {
     match command {
-        NeedsCommand::Needs => command_needs(bot, env, msg).await,
+        Commands::Needs => command_needs(bot, env, msg).await,
     }
 }
 
