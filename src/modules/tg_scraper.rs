@@ -30,18 +30,14 @@ struct ChatTopicUpdate<'a> {
 }
 
 pub fn scrape(env: Arc<BotEnv>, upd: Update) {
-    env.transaction(|conn| {
-        scrape_raw(conn, upd)?;
-        Ok(())
-    })
-    .unwrap();
+    env.transaction(|conn| scrape_raw(conn, &upd)).unwrap();
 }
 
 pub fn scrape_raw(
     conn: &mut SqliteConnection,
-    upd: Update,
+    upd: &Update,
 ) -> Result<(), diesel::result::Error> {
-    let scrape = ScrapedInfo::scrape(&upd);
+    let scrape = ScrapedInfo::scrape(upd);
     diesel::replace_into(schema::tg_users::table)
         .values(scrape.users)
         .execute(conn)?;

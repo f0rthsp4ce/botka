@@ -80,6 +80,10 @@ struct SubCommandScrape {
     #[argh(positional)]
     /// log file
     log_file: OsString,
+
+    #[argh(positional)]
+    /// list of residential_chats
+    residential_chats: Vec<i64>,
 }
 
 #[tokio::main]
@@ -95,7 +99,9 @@ async fn main() -> Result<()> {
     log::info!("Version {}", version());
     match args.subcommand {
         SubCommand::Bot(c) => run_bot(&c.config_file).await?,
-        SubCommand::Scrape(c) => scrape_log(&c.db_file, &c.log_file)?,
+        SubCommand::Scrape(c) => {
+            scrape_log(&c.db_file, &c.log_file, &c.residential_chats)?;
+        }
     }
     Ok(())
 }
@@ -184,7 +190,11 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     Ok(())
 }
 
-fn scrape_log(db_fpath: &str, log_fpath: &OsStr) -> Result<()> {
+fn scrape_log(
+    db_fpath: &str,
+    log_fpath: &OsStr,
+    residential_chats: &[i64],
+) -> Result<()> {
     let mut conn = SqliteConnection::establish(db_fpath)?;
     let mut log_file = File::open(log_fpath)?;
     let mut buf_reader = BufReader::new(&mut log_file);
@@ -193,7 +203,15 @@ fn scrape_log(db_fpath: &str, log_fpath: &OsStr) -> Result<()> {
     conn.exclusive_transaction(|conn| {
         while buf_reader.read_line(&mut line)? > 0 {
             let update: Update = serde_json::from_str(&line)?;
-            modules::tg_scraper::scrape_raw(conn, update)?;
+            modules::tg_scraper::scrape_raw(conn, &update)?;
+            modules::resident_tracker::handle_update_raw(
+                conn,
+                &update,
+                &residential_chats
+                    .iter()
+                    .map(|&i| teloxide::types::ChatId(i))
+                    .collect::<Vec<_>>(),
+            )?;
             line.clear();
         }
         Result::<_, anyhow::Error>::Ok(())
