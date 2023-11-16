@@ -321,10 +321,13 @@ async fn cmd_topics(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
         text.push('\n');
     }
 
-    bot.reply_message(&msg, text)
-        .parse_mode(teloxide::types::ParseMode::Html)
-        .disable_web_page_preview(true)
-        .await?;
+    for lines in text.lines().collect_vec().chunks(100) {
+        let text = lines.join("\n");
+        bot.reply_message(&msg, text)
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .disable_web_page_preview(true)
+            .await?;
+    }
 
     Ok(())
 }
