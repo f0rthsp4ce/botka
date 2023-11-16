@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use diesel::{ExpressionMethods, RunQueryDsl, SqliteConnection};
 use teloxide::types::{
-    Chat, ChatKind, ChatMemberUpdated, ForwardedFrom, Message, MessageEntity,
-    MessageEntityKind, MessageKind, PublicChatKind, Update, UpdateKind, User,
+    Chat, ChatKind, ChatMemberUpdated, Message, MessageKind, PublicChatKind,
+    Update, UpdateKind, User,
 };
 
 use crate::common::BotEnv;
@@ -96,6 +96,7 @@ impl<'a> ScrapedInfo<'a> {
     }
 
     fn scrape_update(&mut self, upd: &'a Update) {
+        upd.mentioned_users().for_each(|u| self.users.push(u.into()));
         match &upd.kind {
             UpdateKind::Message(msg)
             | UpdateKind::ChannelPost(msg)
@@ -103,34 +104,25 @@ impl<'a> ScrapedInfo<'a> {
             | UpdateKind::EditedChannelPost(msg) => {
                 self.scrape_message(msg, true);
             }
-            UpdateKind::InlineQuery(q) => self.scrape_user(&q.from),
-            UpdateKind::ChosenInlineResult(r) => self.scrape_user(&r.from),
+            UpdateKind::InlineQuery(_) => (),
+            UpdateKind::ChosenInlineResult(_) => (),
             UpdateKind::CallbackQuery(q) => {
-                self.scrape_user(&q.from);
                 q.message.as_ref().map(|m| self.scrape_message(m, false));
             }
-            UpdateKind::ShippingQuery(q) => self.scrape_user(&q.from),
-            UpdateKind::PreCheckoutQuery(q) => self.scrape_user(&q.from),
-            UpdateKind::Poll(p) => {
-                p.explanation_entities
-                    .as_ref()
-                    .map(|e| self.scrape_entities(e));
-            }
-            UpdateKind::PollAnswer(a) => self.scrape_user(&a.user),
+            UpdateKind::ShippingQuery(_) => (),
+            UpdateKind::PreCheckoutQuery(_) => (),
+            UpdateKind::Poll(_) => (),
+            UpdateKind::PollAnswer(_) => (),
             UpdateKind::MyChatMember(m) | UpdateKind::ChatMember(m) => {
                 self.scrape_chat_member(m);
             }
-            UpdateKind::ChatJoinRequest(r) => {
-                self.scrape_user(&r.from);
-                self.scrape_chat(&r.chat);
-            }
+            UpdateKind::ChatJoinRequest(r) => self.scrape_chat(&r.chat),
             UpdateKind::Error(_) => {}
         }
     }
 
     fn scrape_message(&mut self, msg: &'a Message, new: bool) {
         if let Some(from) = &msg.from {
-            self.scrape_user(from);
             if new {
                 self.user_in_chat = Some(models::NewTgUserInChat {
                     chat_id: msg.chat.id.into(),
@@ -140,30 +132,15 @@ impl<'a> ScrapedInfo<'a> {
                 });
             }
         }
+        msg.forward_from_chat().map(|c| self.scrape_chat(c));
+
         match &msg.kind {
             MessageKind::Common(k) => {
-                match k.forward.as_ref().map(|f| &f.from) {
-                    Some(ForwardedFrom::User(u)) => self.scrape_user(u),
-                    Some(ForwardedFrom::Chat(c)) => self.scrape_chat(c),
-                    _ => (),
-                }
                 k.reply_to_message
                     .as_deref()
                     .map(|r| self.scrape_message(r, false));
             }
-            MessageKind::NewChatMembers(k) => {
-                for user in &k.new_chat_members {
-                    self.scrape_user(user);
-                }
-            }
-            MessageKind::LeftChatMember(k) => {
-                self.scrape_user(&k.left_chat_member);
-            }
             MessageKind::Pinned(k) => self.scrape_message(&k.pinned, false),
-            MessageKind::ProximityAlertTriggered(k) => {
-                self.scrape_user(&k.proximity_alert_triggered.traveler);
-                self.scrape_user(&k.proximity_alert_triggered.watcher);
-            }
             MessageKind::ForumTopicCreated(k) => {
                 self.topics.push(ChatTopicUpdate {
                     chat_id: msg.chat.id.into(),
@@ -216,29 +193,8 @@ impl<'a> ScrapedInfo<'a> {
                     icon_emoji: None,
                 });
             }
-            MessageKind::VideoChatParticipantsInvited(k) => {
-                k.video_chat_participants_invited
-                    .users
-                    .iter()
-                    .flatten()
-                    .for_each(|u| self.scrape_user(u));
-            }
             _ => (),
         }
-        msg.entities().map(|e| self.scrape_entities(e));
-        msg.caption_entities().map(|e| self.scrape_entities(e));
-    }
-
-    fn scrape_entities(&mut self, entities: &'a [MessageEntity]) {
-        for entity in entities {
-            if let MessageEntityKind::TextMention { user } = &entity.kind {
-                self.scrape_user(user);
-            }
-        }
-    }
-
-    fn scrape_user(&mut self, user: &'a User) {
-        self.users.push(user.into());
     }
 
     fn scrape_chat(&mut self, chat: &'a Chat) {
@@ -257,10 +213,7 @@ impl<'a> ScrapedInfo<'a> {
     }
 
     fn scrape_chat_member(&mut self, cmu: &'a ChatMemberUpdated) {
-        self.scrape_user(&cmu.from);
         self.scrape_chat(&cmu.chat);
-        self.scrape_user(&cmu.old_chat_member.user);
-        self.scrape_user(&cmu.new_chat_member.user);
         self.user_in_chat = Some(models::NewTgUserInChat {
             chat_id: cmu.chat.id.into(),
             user_id: cmu.from.id.into(),
