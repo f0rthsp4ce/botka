@@ -1,10 +1,9 @@
 use std::fmt::Debug;
-use std::net::SocketAddr;
 
 use diesel::prelude::*;
 use salvo_oapi::ToSchema;
 use serde::{Deserialize, Serialize};
-use teloxide::types::{ChatId, ChatMember, MessageId, UserId};
+use teloxide::types::{ChatMember, MessageId, UserId};
 
 use crate::db::{
     config_option_def, DbChatId, DbMessageId, DbThreadId, DbUserId,
@@ -177,67 +176,6 @@ config_option_def!(debate, Debate);
 config_option_def!(wikijs_update_state, crate::utils::WikiJsUpdateState);
 config_option_def!(needs_last_pin, NeedsLastPin);
 
-// Config models
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Config {
-    pub telegram: TelegramConfig,
-    pub db: String,
-    pub log_file: String,
-    pub server_addr: SocketAddr,
-    pub services: ServicesConfig,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct TelegramConfig {
-    pub token: String,
-    pub admins: Vec<UserId>,
-    pub chats: TelegramConfigChats,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct TelegramConfigChats {
-    pub residential: Vec<ChatId>,
-    pub borrowed_items: Vec<ThreadIdPair>,
-    pub forward_channel: ChatId,
-    pub needs: ThreadIdPair,
-    pub wikijs_updates: ThreadIdPair,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ServicesConfig {
-    pub mikrotik: MikrotikConfig,
-    pub home_assistant: HomeAssistantConfig,
-    pub wikijs: WikiJsConfig,
-    pub openai: OpenAIConfig,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct MikrotikConfig {
-    pub host: String,
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct HomeAssistantConfig {
-    pub host: String,
-    pub token: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct WikiJsConfig {
-    pub url: String,
-    pub token: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct OpenAIConfig {
-    pub api_key: String,
-    #[serde(default)]
-    pub disable: bool,
-}
-
 // Serde models
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct DataResident {
@@ -246,23 +184,4 @@ pub struct DataResident {
     pub username: Option<String>,
     pub first_name: String,
     pub last_name: Option<String>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn check_example_config() -> anyhow::Result<()> {
-        let config_text = std::fs::read_to_string("config.example.yaml")?;
-        let config: Config = serde_yaml::from_str(&config_text)?;
-
-        similar_asserts::assert_serde_eq!(
-            serde_yaml::to_value(&config)?,
-            serde_yaml::from_str::<serde_yaml::Value>(&config_text)?,
-            "Extra fields in config.example.yaml?",
-        );
-
-        Ok(())
-    }
 }

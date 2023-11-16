@@ -1,6 +1,6 @@
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 
-use crate::models::Config;
+use crate::config::Config;
 
 #[allow(clippy::module_name_repetitions)] // For conistency with other modules.
 pub fn register_metrics() {

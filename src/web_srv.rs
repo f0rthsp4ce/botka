@@ -10,12 +10,13 @@ use salvo_oapi::{endpoint, OpenApi};
 use tap::Pipe as _;
 use tokio_util::sync::CancellationToken;
 
+use crate::config::Config;
 use crate::db::DbUserId;
 use crate::{models, schema};
 
 struct AppState {
     conn: Mutex<SqliteConnection>,
-    config: Arc<models::Config>,
+    config: Arc<Config>,
     prometheus: PrometheusHandle,
 }
 
@@ -31,7 +32,7 @@ fn server_addr() -> String {
 
 pub async fn run(
     conn: SqliteConnection,
-    config: Arc<models::Config>,
+    config: Arc<Config>,
     prometheus: PrometheusHandle,
     cancel: CancellationToken,
 ) {

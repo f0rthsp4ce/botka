@@ -18,6 +18,7 @@ use teloxide::utils::html;
 use crate::common::{
     filter_command, format_user, BotEnv, CommandHandler, HasCommandRules,
 };
+use crate::config::Config;
 use crate::db::DbUserId;
 use crate::utils::{
     replace_urls_with_titles, write_message_link, BotExt, ResultExt,
@@ -139,10 +140,7 @@ async fn command_needs(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
 }
 
 /// `Some` for the needs thread, `None` otherwise.
-fn check_thread_id(
-    config: &models::Config,
-    msg: &Message,
-) -> Option<ThreadIdPair> {
+fn check_thread_id(config: &Config, msg: &Message) -> Option<ThreadIdPair> {
     msg.thread_id
         .map(|thread| ThreadIdPair { chat: msg.chat.id, thread })
         .filter(|p| p == &config.telegram.chats.needs)

@@ -28,6 +28,7 @@ use teloxide::Bot;
 use tokio_util::sync::CancellationToken;
 
 mod common;
+mod config;
 mod db;
 mod metrics;
 mod models;
@@ -111,7 +112,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     metrics::register_metrics();
     modules::borrowed_items::register_metrics();
 
-    let config: models::Config =
+    let config: crate::config::Config =
         serde_yaml::from_reader(File::open(config_fpath)?)
             .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
 

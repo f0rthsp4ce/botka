@@ -12,6 +12,7 @@ use teloxide::utils::command::BotCommands;
 use teloxide::utils::html::escape;
 use teloxide::Bot;
 
+use crate::config::Config;
 use crate::db::DbUserId;
 use crate::utils::BotExt;
 
@@ -64,7 +65,7 @@ pub trait HasCommandRulesTrait {
 
 pub struct BotEnv {
     pub conn: Mutex<SqliteConnection>,
-    pub config: Arc<crate::models::Config>,
+    pub config: Arc<Config>,
     pub reqwest_client: reqwest::Client,
     pub openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
 }
