@@ -119,7 +119,7 @@ async fn get_residents_v0() -> Json<Vec<models::DataResident>> {
             schema::tg_users::table
                 .on(schema::residents::tg_id.eq(schema::tg_users::id)),
         )
-        .order(schema::residents::tg_id.asc())
+        .order(schema::residents::begin_date.desc())
         .select((schema::residents::tg_id, schema::tg_users::all_columns))
         .load(&mut *state().conn.lock().unwrap())
         .unwrap();
@@ -142,6 +142,7 @@ async fn get_residents_v0() -> Json<Vec<models::DataResident>> {
 #[endpoint()]
 async fn get_all_residents_v0() -> Json<Vec<models::Resident>> {
     schema::residents::table
+        .order(schema::residents::begin_date.desc())
         .load(&mut *state().conn.lock().unwrap())
         .map(Json)
         .unwrap()

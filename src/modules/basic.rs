@@ -138,7 +138,7 @@ async fn cmd_list_residents<'a>(
                 schema::residents::tg_id,
                 schema::tg_users::all_columns.nullable(),
             ))
-            .order(schema::residents::tg_id.asc())
+            .order(schema::residents::begin_date.desc())
             .load(&mut *env.conn())?;
     let mut text = String::new();
 
