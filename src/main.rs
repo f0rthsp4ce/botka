@@ -141,6 +141,9 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                 Update::filter_message()
                     .enter_dialogue::<Message, InMemStorage<State>, State>()
                     .inspect_async(reset_dialogue_on_command)
+                    .inspect_async(
+                        modules::rename_closed_topics::inspect_message,
+                    )
                     .branch(modules::basic::command_handler())
                     .branch(modules::debates::command_handler())
                     .branch(modules::userctl::command_handler())
