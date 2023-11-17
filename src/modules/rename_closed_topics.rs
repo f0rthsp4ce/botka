@@ -17,13 +17,7 @@ lazy_static::lazy_static! {
         Regex::new(r"^\[[×xXхХ]\] *").unwrap();
 }
 
-pub async fn inspect_message<'a>(bot: Bot, env: Arc<BotEnv>, msg: Message) {
-    if let Err(e) = inspect_message_result(bot, env, msg).await {
-        log::error!("Error handling message: {}", e);
-    }
-}
-
-async fn inspect_message_result<'a>(
+pub async fn inspect_message<'a>(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,

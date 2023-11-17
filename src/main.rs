@@ -26,6 +26,7 @@ use teloxide::requests::Requester;
 use teloxide::types::{CallbackQuery, Message, Update};
 use teloxide::Bot;
 use tokio_util::sync::CancellationToken;
+use utils::HandlerExt as _;
 
 mod common;
 mod config;
@@ -141,10 +142,8 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                 Update::filter_message()
                     .enter_dialogue::<Message, InMemStorage<State>, State>()
                     .inspect_async(reset_dialogue_on_command)
-                    .inspect_async(
-                        modules::rename_closed_topics::inspect_message,
-                    )
-                    .inspect_async(modules::forward_topic_pins::inspect_message)
+                    .inspect_err(modules::rename_closed_topics::inspect_message)
+                    .inspect_err(modules::forward_topic_pins::inspect_message)
                     .branch(modules::basic::command_handler())
                     .branch(modules::debates::command_handler())
                     .branch(modules::userctl::command_handler())
