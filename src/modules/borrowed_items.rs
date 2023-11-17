@@ -38,7 +38,7 @@ async fn handle_message(
 ) -> Result<()> {
     let Some(user) = msg.from.as_ref() else { return Ok(()) };
     let Some(text) = textify_message(&msg) else { return Ok(()) };
-    let item_names = match classify(env.clone(), &text).await? {
+    let item_names = match classify(Arc::clone(&env), &text).await? {
         ClassificationResult::Took(items) => items,
         ClassificationResult::Returned => return Ok(()),
         ClassificationResult::Unknown => return Ok(()),

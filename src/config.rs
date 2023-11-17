@@ -82,7 +82,7 @@ mod tests {
         let config: Config = serde_yaml::from_str(&config_text)?;
 
         similar_asserts::assert_serde_eq!(
-            serde_yaml::to_value(&config)?,
+            serde_yaml::to_value(config)?,
             serde_yaml::from_str::<serde_yaml::Value>(&config_text)?,
             "Extra fields in config.example.yaml?",
         );

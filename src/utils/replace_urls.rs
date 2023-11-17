@@ -52,7 +52,7 @@ pub async fn replace_urls_with_titles(texts: &[&str]) -> Vec<String> {
             }
             .await
             .unwrap_or_else(|e| {
-                log::warn!("Failed to fetch link {:?}: {}", link, e);
+                log::warn!("Failed to fetch link {link:?}: {e}");
                 link.clone()
             });
             (link, title)
@@ -66,7 +66,7 @@ pub async fn replace_urls_with_titles(texts: &[&str]) -> Vec<String> {
         .iter()
         .map(|&text| {
             URL_REGEX
-                .replace_all(text, |caps: &regex::Captures| {
+                .replace_all(text, |caps: &regex::Captures<'_>| {
                     &link_texts[&caps[0]]
                 })
                 .to_string()
@@ -94,12 +94,12 @@ mod tests {
 
         for &url in &urls {
             for pattern in &patterns {
-                let text = pattern.replace("$", url);
+                let text = pattern.replace('$', url);
                 let result = URL_REGEX
-                    .replace_all(&text, |caps: &regex::Captures| {
+                    .replace_all(&text, |caps: &regex::Captures<'_>| {
                         format!("[{}]", &caps[0])
                     });
-                assert_eq!(result, pattern.replace("$", &format!("[{}]", url)));
+                assert_eq!(result, pattern.replace('$', &format!("[{url}]")));
             }
         }
     }

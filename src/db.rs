@@ -50,9 +50,8 @@ impl<T: Serialize + DeserializeOwned> ConfigOptionDef<T> {
             Ok(value) => Ok(Some(value)),
             Err(e) => {
                 log::error!(
-                    "Error deserializing option {}: {}",
+                    "Error deserializing option {}: {e}",
                     self.key_name,
-                    e
                 );
                 Ok(None)
             }

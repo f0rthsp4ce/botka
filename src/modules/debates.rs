@@ -141,13 +141,10 @@ async fn cmd_debate_status<'a>(
         )],
         has_forward: bool,
     ) -> impl Iterator<Item = (DbUserId, &Option<crate::models::TgUser>)> {
-        messages.iter().filter_map(move |(resident_id, forward, tg_user)| {
-            if forward.is_some() == has_forward {
-                Some((*resident_id, tg_user))
-            } else {
-                None
-            }
-        })
+        messages
+            .iter()
+            .filter(move |(_, forward, _)| forward.is_some() == has_forward)
+            .map(|(resident_id, _, tg_user)| (*resident_id, tg_user))
     }
 
     let text = if let Some((debate, messages)) = result {
@@ -211,7 +208,7 @@ async fn cmd_debate_end<'a>(
                         | teloxide::ApiError::MessageToForwardNotFound,
                     )) => { /* ignore */ }
                     Err(e) => {
-                        log::error!("Failed to forward message: {}", e);
+                        log::error!("Failed to forward message: {e}");
                     }
                 }
 
@@ -229,7 +226,7 @@ async fn cmd_debate_end<'a>(
                         | teloxide::ApiError::MessageToForwardNotFound,
                     )) => { /* ignore */ }
                     Err(e) => {
-                        log::error!("Failed to forward message: {}", e);
+                        log::error!("Failed to forward message: {e}");
                     }
                 }
 
@@ -295,7 +292,7 @@ pub async fn debate_send<'a>(
             )
             .await
         {
-            log::warn!("Failed to delete message: {}", e);
+            log::warn!("Failed to delete message: {e}");
         }
         bot.reply_message(&msg, "Forward updated.").await?;
     } else {

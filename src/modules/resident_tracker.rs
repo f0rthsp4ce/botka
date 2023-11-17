@@ -63,7 +63,7 @@ fn filter<'a>(
 fn handle_update_transaction(
     conn: &mut SqliteConnection,
     residential_chats: &[ChatId],
-    f: Filtered,
+    f: Filtered<'_>,
 ) -> Result<(), diesel::result::Error> {
     let user_id = DbUserId::from(f.cm.new_chat_member.user.id);
 

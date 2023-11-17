@@ -21,11 +21,11 @@ pub async fn task(env: Arc<BotEnv>, bot: Bot, shutdown: CancellationToken) {
             () = sleep(Duration::from_secs(60)) => {}
         }
 
-        match check_wikijs_updates(env.clone(), bot.clone()).await {
+        match check_wikijs_updates(Arc::clone(&env), bot.clone()).await {
             Ok(()) => crate::metrics::update_service("wikijs", true),
             Err(e) => {
                 crate::metrics::update_service("wikijs", false);
-                log::error!("check_wikijs_updates: {}", e);
+                log::error!("check_wikijs_updates: {e}");
             }
         }
     }

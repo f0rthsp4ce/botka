@@ -242,7 +242,7 @@ async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
             format_users(&mut text, data.iter().map(|(id, u)| (*id, u)));
         }
         Err(e) => {
-            log::error!("Failed to get leases: {}", e);
+            log::error!("Failed to get leases: {e}");
             writeln!(text, "Failed to get leases.").unwrap();
         }
     }

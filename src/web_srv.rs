@@ -36,8 +36,11 @@ pub async fn run(
     prometheus: PrometheusHandle,
     cancel: CancellationToken,
 ) {
-    let app_state =
-        AppState { conn: Mutex::new(conn), config: config.clone(), prometheus };
+    let app_state = AppState {
+        conn: Mutex::new(conn),
+        config: Arc::clone(&config),
+        prometheus,
+    };
     STATE.set(app_state).ok().expect("AppState already initialized");
 
     let router = Router::new()

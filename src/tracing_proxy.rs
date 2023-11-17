@@ -47,17 +47,17 @@ pub async fn start(log_file: &str) -> Result<reqwest::Url> {
     let local_addr = listener.local_addr()?;
     let server = Server::builder(AddrIncoming::from_listener(listener)?).serve(
         make_service_fn(move |_conn| {
-            let proxy = proxy.clone();
+            let proxy = Arc::clone(&proxy);
             async {
                 Ok::<_, Infallible>(service_fn(move |req| {
-                    handle_request(req, proxy.clone())
+                    handle_request(req, Arc::clone(&proxy))
                 }))
             }
         }),
     );
     tokio::spawn(async move {
         if let Err(e) = server.await {
-            log::error!("Proxy server error: {}", e);
+            log::error!("Proxy server error: {e}");
         }
     });
 
@@ -99,9 +99,7 @@ async fn handle_request(
     let body = forwarded_resp.bytes().await?;
 
     if is_get_updates {
-        if let Ok(body) =
-            serde_json::from_slice::<GetUpdatesResponse>(&body[..])
-        {
+        if let Ok(body) = serde_json::from_slice::<GetUpdatesResponse>(&body) {
             crate::metrics::update_service("telegram", true);
             let mut log_file = proxy.log_file.lock().await;
             for update in body.result {

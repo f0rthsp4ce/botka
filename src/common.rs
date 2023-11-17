@@ -71,7 +71,7 @@ pub struct BotEnv {
 }
 
 impl BotEnv {
-    pub fn conn(&self) -> MutexGuard<SqliteConnection> {
+    pub fn conn(&self) -> MutexGuard<'_, SqliteConnection> {
         self.conn.lock().unwrap()
     }
     pub fn transaction<T>(

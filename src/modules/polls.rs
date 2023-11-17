@@ -113,7 +113,7 @@ async fn intercept_new_poll(
         }) => poll.poll.id,
         _ => {
             // TODO: return error
-            log::error!("Expected poll, got {:?}", new_poll);
+            log::error!("Expected poll, got {new_poll:?}");
             bot.delete_message(msg.chat.id, msg.id)
                 .await
                 .log_error("delete message");
@@ -123,7 +123,7 @@ async fn intercept_new_poll(
 
     if let Err(e) = bot.delete_message(msg.chat.id, msg.id).await {
         // TODO: check rights before sending message
-        log::warn!("Failed to delete poll message: {}", e);
+        log::warn!("Failed to delete poll message: {e}");
         bot.delete_message(msg.chat.id, new_poll.id)
             .await
             .log_error("delete message");

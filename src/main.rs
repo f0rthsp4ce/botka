@@ -1,10 +1,25 @@
+#![warn(rust_2018_idioms)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+// Restriction lints
+#![warn(
+    clippy::clone_on_ref_ptr,
+    clippy::deref_by_slicing,
+    clippy::if_then_some_else_none,
+    clippy::undocumented_unsafe_blocks,
+    clippy::unnecessary_cast,
+    clippy::unnecessary_safety_comment
+)]
 // False positives
 #![allow(clippy::needless_pass_by_value)] // for dptree handlers
 // Style
 #![allow(clippy::items_after_statements)]
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::redundant_closure_for_method_calls)]
+// Style in tests
+#![cfg_attr(
+    test,
+    allow(clippy::iter_on_empty_collections, clippy::iter_on_single_items)
+)]
 // FIXME: fix these
 #![allow(clippy::too_many_lines)]
 
@@ -166,7 +181,10 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
             .branch(modules::polls::poll_answer_handler())
             .endpoint(drop_endpoint),
     )
-    .dependencies(dptree::deps![InMemStorage::<State>::new(), bot_env.clone()])
+    .dependencies(dptree::deps![
+        InMemStorage::<State>::new(),
+        Arc::clone(&bot_env)
+    ])
     .build();
     let bot_shutdown_token = dispatcher.shutdown_token().clone();
     let mut join_handles = Vec::new();
@@ -175,14 +193,14 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     let cancel = CancellationToken::new();
 
     join_handles.push(tokio::spawn(modules::updates::task(
-        bot_env.clone(),
+        Arc::clone(&bot_env),
         bot.clone(),
         cancel.clone(),
     )));
 
     join_handles.push(tokio::spawn(web_srv::run(
         SqliteConnection::establish(&bot_env.config.db)?,
-        bot_env.config.clone(),
+        Arc::clone(&bot_env.config),
         prometheus,
         cancel.clone(),
     )));

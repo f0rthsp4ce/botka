@@ -455,6 +455,8 @@ fn letter_index(out: &mut String, index: usize) {
             .unwrap();
         out.push(c);
         if r1 == 0 {
+            // SAFETY: we are reversing part of the string we just appended.
+            // It contains only ASCII characters 'a'..='z'.
             unsafe { out[out_len..].as_bytes_mut() }.reverse();
             return;
         }
