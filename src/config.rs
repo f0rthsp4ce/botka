@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
-use teloxide::types::{ChatId, UserId};
+use teloxide::types::{ChatId, ThreadId, UserId};
 
 use crate::utils::ThreadIdPair;
 
@@ -26,8 +26,16 @@ pub struct TelegramChats {
     pub residential: Vec<ChatId>,
     pub borrowed_items: Vec<ThreadIdPair>,
     pub forward_channel: ChatId,
+    pub forward_pins: Vec<FowardPins>,
     pub needs: ThreadIdPair,
     pub wikijs_updates: ThreadIdPair,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FowardPins {
+    pub from: ChatId,
+    pub to: ChatId,
+    pub ignore_threads: Vec<ThreadId>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

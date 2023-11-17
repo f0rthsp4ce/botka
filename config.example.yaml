@@ -19,6 +19,12 @@ telegram:
     # Bot maintainer is supposed to create private channel and add bot into it.
     forward_channel: -1001234567890
 
+    # Forward pinned messages from specified source chats to the target channel.
+    forward_pins:
+      - from: -1001234567890
+        to: -1001234567890
+        ignore_threads: [123]
+
     # Thread for the 'needs' module.
     needs: { chat: -1001234567890, thread: 123 }
 
