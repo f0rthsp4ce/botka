@@ -23,9 +23,9 @@
             inherit system;
             overlays = [ (import nixpkgs-mozilla) ];
           }).rustChannelOf {
-            date = "2023-10-14";
+            date = "2023-11-18";
             channel = "nightly";
-            sha256 = "sha256-pFboSWLjOvUnWPnV2nzQ8eUSLmbzmHiuRqFdSZbPdoI=";
+            sha256 = "sha256-PZjjJ2eeY5keN6NtGH9V555p3qpiVWxYtZj/LFkQ+DA=";
           }).rust.override {
             # rust-src is required for rust-analyzer
             extensions = [ "rust-src" ];
