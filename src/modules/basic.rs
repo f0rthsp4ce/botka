@@ -10,13 +10,13 @@ use diesel::prelude::*;
 use itertools::Itertools;
 use macro_rules_attribute::derive;
 use teloxide::prelude::*;
-use teloxide::types::{InputFile, StickerKind, ThreadId};
+use teloxide::types::{InputFile, ThreadId};
 use teloxide::utils::command::BotCommands;
 use teloxide::utils::html;
 
 use crate::common::{
     filter_command, format_users, BotEnv, CommandHandler, HasCommandRules,
-    HasCommandRulesTrait, MyDialogue, State,
+    HasCommandRulesTrait, MyDialogue, State, TopicEmojis,
 };
 use crate::db::{DbChatId, DbUserId};
 use crate::utils::{write_message_link, BotExt};
@@ -277,26 +277,7 @@ async fn cmd_topics(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
         return Ok(());
     }
 
-    let mut emojis = topics
-        .iter()
-        .filter_map(|t| t.icon_emoji.as_ref())
-        .filter(|i| !i.is_empty())
-        .cloned()
-        .collect_vec();
-    emojis.sort();
-    emojis.dedup();
-
-    let emojis = bot
-        .get_custom_emoji_stickers(emojis)
-        .await?
-        .into_iter()
-        .filter_map(|e| {
-            let StickerKind::CustomEmoji { custom_emoji_id } = e.kind else {
-                return None;
-            };
-            Some((custom_emoji_id, e.emoji?))
-        })
-        .collect::<HashMap<_, _>>();
+    let topic_emojis = TopicEmojis::fetch(&bot, topics.iter()).await?;
 
     let mut chats = HashMap::new();
     for topic in &topics {
@@ -316,7 +297,7 @@ async fn cmd_topics(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
         .unwrap();
 
         for topic in topics {
-            render_topic_link(&mut text, &emojis, topic);
+            render_topic_link(&mut text, &topic_emojis, topic);
         }
         text.push('\n');
     }
@@ -334,27 +315,16 @@ async fn cmd_topics(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
 
 fn render_topic_link(
     out: &mut String,
-    emojis: &HashMap<String, String>,
+    emojis: &TopicEmojis,
     topic: &models::TgChatTopic,
 ) {
     write_message_link(out, topic.chat_id, ThreadId::from(topic.topic_id).0);
-
-    out.push_str(
-        topic
-            .icon_emoji
-            .as_ref()
-            .and_then(|e| emojis.get(e))
-            .map_or("💬", |e| e.as_str()),
-    );
+    out.push_str(emojis.get(topic));
     out.push(' ');
-
     if let Some(name) = &topic.name {
         out.push_str(&html::escape(name));
     } else {
         write!(out, "Topic #{}", ThreadId::from(topic.topic_id)).unwrap();
     }
-
-    out.push_str("</a>");
-
-    out.push('\n');
+    out.push_str("</a>\n");
 }

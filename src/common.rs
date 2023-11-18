@@ -1,13 +1,17 @@
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use anyhow::Result;
 use diesel::{
     ExpressionMethods, QueryDsl, QueryResult, RunQueryDsl, SqliteConnection,
 };
+use itertools::Itertools;
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::DpHandlerDescription;
 use teloxide::prelude::Dialogue;
-use teloxide::types::{Me, Message, User, UserId};
+use teloxide::requests::Requester;
+use teloxide::types::{Me, Message, StickerKind, User, UserId};
 use teloxide::utils::command::BotCommands;
 use teloxide::utils::html::escape;
 use teloxide::Bot;
@@ -264,6 +268,50 @@ pub fn is_resident(conn: &mut SqliteConnection, user: &User) -> bool {
         .ok()
         .unwrap_or(0)
         > 0
+}
+
+/// A container for associating emojis with topics.
+pub struct TopicEmojis(HashMap<String, String>);
+
+impl TopicEmojis {
+    /// Fetch emojis for topics from Telegram.
+    pub async fn fetch(
+        bot: &Bot,
+        topics: impl Iterator<Item = &crate::models::TgChatTopic> + Send,
+    ) -> Result<Self> {
+        let mut emojis = topics
+            .filter_map(|t| t.icon_emoji.as_ref())
+            .filter(|i| !i.is_empty())
+            .cloned()
+            .collect_vec();
+        emojis.sort();
+        emojis.dedup();
+        if emojis.is_empty() {
+            return Ok(Self(HashMap::new()));
+        }
+        let emojis = bot
+            .get_custom_emoji_stickers(emojis)
+            .await?
+            .into_iter()
+            .filter_map(|e| {
+                let StickerKind::CustomEmoji { custom_emoji_id } = e.kind
+                else {
+                    return None;
+                };
+                Some((custom_emoji_id, e.emoji?))
+            })
+            .collect::<HashMap<_, _>>();
+        Ok(Self(emojis))
+    }
+
+    /// Get emoji for a topic.
+    pub fn get(&self, topic: &crate::models::TgChatTopic) -> &str {
+        topic
+            .icon_emoji
+            .as_ref()
+            .and_then(|e| self.0.get(e))
+            .map_or("💬", |s| s.as_str())
+    }
 }
 
 #[cfg(test)]
