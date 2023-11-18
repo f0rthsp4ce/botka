@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use hyper::server::conn::AddrIncoming;
@@ -12,6 +12,8 @@ use hyper::{Body, Request, Response, Server, Uri};
 use reqwest::Client;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
+
+use crate::utils::parse_tgapi_method;
 
 struct Proxy {
     client: Client,
@@ -26,7 +28,7 @@ struct GetUpdatesResponse {
 }
 
 /// Start a proxy server that forwards requests to the Telegram API and logs
-/// getUpdates responses to a file.
+/// getUpdates responses, as well as all other requests and responses.
 /// Returns the URL of the proxy server.
 pub async fn start(log_file: &str) -> Result<reqwest::Url> {
     // Make client from teloxide::net::default_reqwest_settings, plus 3 seconds.
@@ -64,58 +66,105 @@ pub async fn start(log_file: &str) -> Result<reqwest::Url> {
     Ok(reqwest::Url::parse(&format!("http://{local_addr}"))?)
 }
 
+/// Naming convention used:
+/// ```text
+/// ┌────────┐┏━━━━━━━━━━━━━┓┌─────────┐
+/// │Teloxide│┃Tracing Proxy┃│Telegram │
+/// └───┬────┘┗━━━━━━┳━━━━━━┛└────┬────┘
+///     │ in_request ┃            │     
+///     │───────────>┃            │     
+///     │            ┃out_request │     
+///     │            ┃───────────>│     
+///     │            ┃out_response│     
+///     │            ┃<───────────│     
+///     │in_response ┃            │     
+///     │<───────────┃            │     
+/// ```
 async fn handle_request(
-    req: Request<Body>,
+    in_request: Request<Body>,
     proxy: Arc<Proxy>,
 ) -> Result<Response<Body>> {
-    let (mut parts, body) = req.into_parts();
-    parts.uri = Uri::builder()
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let (mut in_request_parts, in_request_body) = in_request.into_parts();
+    in_request_parts.uri = Uri::builder()
         .scheme("https")
         .authority("api.telegram.org")
-        .path_and_query(parts.uri.path_and_query().unwrap().as_str())
+        .path_and_query(in_request_parts.uri.path_and_query().unwrap().as_str())
         .build()
         .unwrap();
-    parts
+    in_request_parts
         .headers
         .insert("host", "api.telegram.org".parse().expect("host header"));
-    let path = parts.uri.path_and_query().unwrap().path();
-    const PREFIX: &str = "/bot";
-    const SUFFIX: &str = "/GetUpdates";
-    let is_get_updates = path.starts_with(PREFIX)
-        && path.ends_with(SUFFIX)
-        && path[PREFIX.len()..path.len() - SUFFIX.len()].find('/').is_none();
 
-    let body_bytes = hyper::body::to_bytes(body).await?;
-    let request = Request::from_parts(parts, body_bytes);
-    let request: reqwest::Request = request.try_into()?;
+    let method = parse_tgapi_method(
+        in_request_parts.uri.path_and_query().unwrap().path(),
+    )
+    .map(|s| s.to_owned());
+    let in_request_body = hyper::body::to_bytes(in_request_body).await?;
+    let in_request_body_json =
+        serde_json::from_slice::<serde_json::Value>(in_request_body.as_ref())
+            .ok();
 
-    let forwarded_resp =
-        proxy.client.execute(request).await.expect("request error");
+    let out_request: reqwest::Request =
+        Request::from_parts(in_request_parts, in_request_body).try_into()?;
+    let out_response =
+        proxy.client.execute(out_request).await.expect("request error");
 
     // Convert the reqwest Response to hyper Response
-    let status = forwarded_resp.status();
-    let version = forwarded_resp.version();
-    let headers = forwarded_resp.headers().clone();
-    let body = forwarded_resp.bytes().await?;
+    let out_response_status = out_response.status();
+    let out_response_version = out_response.version();
+    let out_response_headers = out_response.headers().clone();
+    let out_response_body = out_response.bytes().await?;
 
-    if is_get_updates {
-        if let Ok(body) = serde_json::from_slice::<GetUpdatesResponse>(&body) {
+    if method.as_deref() == Some("GetUpdates") {
+        // Flatten updates
+        if let Ok(response_body) =
+            serde_json::from_slice::<GetUpdatesResponse>(&out_response_body)
+        {
             crate::metrics::update_service("telegram", true);
-            let mut log_file = proxy.log_file.lock().await;
-            for update in body.result {
-                serde_json::to_writer(&mut *log_file, &update).unwrap();
-                log_file.write_all(b"\n").unwrap();
-            }
-            log_file.flush().unwrap();
+            append_values_to_log_file(&proxy, response_body.result.iter())
+                .await;
         } else {
             crate::metrics::update_service("telegram", false);
         }
+    } else {
+        // Log request and response
+        append_values_to_log_file(
+            &proxy,
+            std::iter::once(serde_json::json!({
+                "__f0bot": "v0",
+                "date": now,
+                "method": method,
+                "status": out_response_status.as_u16(),
+                "request": in_request_body_json,
+                "response": serde_json::from_slice::<serde_json::Value>(
+                    out_response_body.as_ref(),
+                ).ok(),
+            })),
+        )
+        .await;
     }
 
-    let mut resp = Response::new(body.into());
-    *resp.status_mut() = status;
-    *resp.headers_mut() = headers;
-    *resp.version_mut() = version;
+    let mut in_response = Response::new(out_response_body.into());
+    *in_response.status_mut() = out_response_status;
+    *in_response.headers_mut() = out_response_headers;
+    *in_response.version_mut() = out_response_version;
 
-    Ok(resp)
+    Ok(in_response)
+}
+
+async fn append_values_to_log_file(
+    proxy: &Proxy,
+    values: impl Iterator<Item = impl serde::Serialize> + Send,
+) {
+    let mut log_file = proxy.log_file.lock().await;
+    for value in values {
+        serde_json::to_writer(&mut *log_file, &value).unwrap();
+        log_file.write_all(b"\n").unwrap();
+    }
+    log_file.flush().unwrap();
 }

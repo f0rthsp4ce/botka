@@ -9,7 +9,7 @@ mod wikijs;
 pub use diesel_json::Sqlizer;
 pub use dptree_ext::HandlerExt;
 pub use log_error::ResultExt;
-pub use parsers::deserealize_duration;
+pub use parsers::{deserealize_duration, parse_tgapi_method};
 pub use replace_urls::replace_urls_with_titles;
 pub use wikijs::{get_wikijs_updates, WikiJsUpdateState};
 

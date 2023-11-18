@@ -224,6 +224,11 @@ fn scrape_log(
 
     conn.exclusive_transaction(|conn| {
         while buf_reader.read_line(&mut line)? > 0 {
+            if line.starts_with(r#"{"__f0bot":""#) {
+                // Ignore requests/responses for now
+                line.clear();
+                continue;
+            }
             let update: Update = serde_json::from_str(&line)?;
             modules::tg_scraper::scrape_raw(conn, &update)?;
             modules::resident_tracker::handle_update_raw(

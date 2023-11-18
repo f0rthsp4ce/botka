@@ -1,6 +1,8 @@
 use std::time::Duration;
 
+use nom::bytes::complete::{tag, take_while1};
 use nom::character::complete::{digit1, one_of};
+use nom::combinator::rest;
 use nom::error::ParseError;
 use nom::sequence::tuple;
 use nom::IResult;
@@ -51,6 +53,22 @@ fn duration_segment(input: &str) -> IResult<&str, Duration> {
     Ok((input, duration))
 }
 
+/// Parse a telegram bot api path, dropping the credentials. E.g., parsing
+/// `"/bot123:abc/GetUpdates"` gives `Some("GetUpdates")`.
+pub fn parse_tgapi_method(input: &str) -> Option<&str> {
+    tgapi_method(input).ok().map(|(_, method)| method)
+}
+
+fn tgapi_method(input: &str) -> IResult<&str, &str> {
+    let (input, _) = tag("/bot")(input)?;
+    let (input, _) = digit1(input)?;
+    let (input, _) = tag(":")(input)?;
+    let (input, _) = take_while1(|c| c != '/')(input)?;
+    let (input, _) = tag("/")(input)?;
+    let (input, method) = rest(input)?;
+    Ok((input, method))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,5 +102,13 @@ mod tests {
         let time_struct: TestDuration =
             serde_json::from_str(&format!("\"{DURATION_STR}\"")).unwrap();
         assert_eq!(time_struct.0, DURATION);
+    }
+
+    #[test]
+    fn test_parse_tgapi_method() {
+        assert_eq!(
+            parse_tgapi_method("/bot123:abc/GetUpdates"),
+            Some("GetUpdates"),
+        );
     }
 }
