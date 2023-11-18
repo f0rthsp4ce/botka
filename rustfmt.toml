@@ -1,6 +1,5 @@
 max_width = 80
 use_small_heuristics = "max"
-
 # Unstable options
 unstable_features = true
 imports_granularity = "module"

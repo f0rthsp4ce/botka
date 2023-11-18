@@ -5,7 +5,8 @@ default:
 fmt:
 	cargo fmt
 	nixfmt flake.nix
-	prettier -w \
+	prettier $PRETTIER_PLUGINS -w \
+		Cargo.toml diesel.toml rustfmt.toml \
 		config.example.yaml \
 		residents-timeline/{index.ts,package.json,tsconfig.json} \
 		;

@@ -100,6 +100,8 @@
               pkgs.nodejs
               pkgs.prefetch-npm-deps
             ] ++ buildDeps ++ baseRuntimeDeps;
+            PRETTIER_PLUGINS =
+              "--plugin ${pkgs.nodePackages.prettier-plugin-toml}/lib/node_modules/prettier-plugin-toml/lib/api.js";
           };
         };
     };
