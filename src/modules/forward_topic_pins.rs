@@ -6,7 +6,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use diesel::prelude::*;
 use teloxide::prelude::*;
-use teloxide::types::MessageKind;
 use teloxide::utils::html;
 
 use crate::common::{BotEnv, TopicEmojis};
@@ -16,9 +15,9 @@ use crate::models;
 pub async fn inspect_message<'a>(
     bot: Bot,
     env: Arc<BotEnv>,
-    msg: Message,
+    pin: Message,
 ) -> Result<()> {
-    let MessageKind::Pinned(pin) = &msg.kind else { return Ok(()) };
+    let Some(msg) = pin.pinned_message() else { return Ok(()) };
 
     let forward_to = env.config.telegram.chats.forward_pins.iter().find(|f| {
         f.from == msg.chat.id
@@ -26,7 +25,7 @@ pub async fn inspect_message<'a>(
     });
     let Some(forward_to) = forward_to else { return Ok(()) };
 
-    let topic_link = render_topic_link(&bot, &env, &msg).await?;
+    let topic_link = render_topic_link(&bot, &env, msg).await?;
 
     bot.send_message(forward_to.to, format!("<b>📌 in {topic_link}</b>"))
         .parse_mode(teloxide::types::ParseMode::Html)
@@ -34,8 +33,7 @@ pub async fn inspect_message<'a>(
         .await?;
 
     // NOTE: might fail on some messages
-    bot.forward_message(forward_to.to, pin.pinned.chat.id, pin.pinned.id)
-        .await?;
+    bot.forward_message(forward_to.to, msg.chat.id, msg.id).await?;
 
     Ok(())
 }
