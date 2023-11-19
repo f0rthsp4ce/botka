@@ -1,10 +1,11 @@
-use std::fmt::Write;
+use std::fmt::{Display, Formatter, Write};
 
 use serde::{Deserialize, Serialize};
 use teloxide::payloads;
 use teloxide::prelude::*;
 use teloxide::requests::{JsonRequest, MultipartRequest};
-use teloxide::types::{ChatId, InputFile, MessageId, ThreadId};
+use teloxide::types::{ChatId, InputFile, MessageId, ThreadId, User};
+use teloxide::utils::html;
 
 pub trait BotExt {
     fn reply_message<T: Into<String>>(
@@ -61,6 +62,33 @@ impl BotExt for Bot {
             self.send_photo(msg.chat.id, photo).reply_to_message_id(msg.id);
         reply.message_thread_id = msg.thread_id;
         reply
+    }
+}
+
+pub struct UserHtmlLink<'a>(&'a User);
+
+pub trait UserExt {
+    fn html_link(&self) -> UserHtmlLink<'_>;
+}
+
+impl UserExt for User {
+    fn html_link(&self) -> UserHtmlLink<'_> {
+        UserHtmlLink(self)
+    }
+}
+
+impl Display for UserHtmlLink<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "<a href=\"tg://user?id={}\">{}",
+            self.0.id,
+            html::escape(&self.0.first_name)
+        )?;
+        if let Some(last_name) = &self.0.last_name {
+            write!(f, " {}", html::escape(last_name))?;
+        }
+        write!(f, "</a>")
     }
 }
 

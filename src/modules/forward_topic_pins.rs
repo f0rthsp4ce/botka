@@ -11,6 +11,7 @@ use teloxide::utils::html;
 use crate::common::{BotEnv, TopicEmojis};
 use crate::db::{DbChatId, DbThreadId};
 use crate::models;
+use crate::utils::{format_to, UserExt};
 
 pub async fn inspect_message<'a>(
     bot: Bot,
@@ -27,12 +28,20 @@ pub async fn inspect_message<'a>(
 
     let topic_link = render_topic_link(&bot, &env, msg).await?;
 
+    if let Some(poll) = msg.poll().filter(|p| !p.is_anonymous) {
+        // Polls with visible voters can't be forwarded to channels.
+        bot.send_message(forward_to.to, render_poll(msg, poll, &topic_link))
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .disable_web_page_preview(true)
+            .await?;
+        return Ok(());
+    }
+
     bot.send_message(forward_to.to, format!("<b>📌 in {topic_link}</b>"))
         .parse_mode(teloxide::types::ParseMode::Html)
         .disable_web_page_preview(true)
         .await?;
 
-    // NOTE: might fail on some messages
     bot.forward_message(forward_to.to, msg.chat.id, msg.id).await?;
 
     Ok(())
@@ -68,4 +77,29 @@ async fn render_topic_link(
         }
         _ => format!("https://t.me/c/{}/{}", chat_id, msg.id),
     })
+}
+
+fn render_poll(msg: &Message, poll: &Poll, topic_link: &str) -> String {
+    let mut text = "<b>📌 Poll ".to_string();
+    if poll.is_closed {
+        format_to!(text, "results ");
+    }
+    format_to!(text, "in {topic_link}");
+    if let Some(from) = &msg.from {
+        format_to!(text, " by {}", from.html_link());
+    }
+    if let Some(forwarded_from) = &msg.forward_from_user() {
+        format_to!(text, " (forwarded from {})", forwarded_from.html_link());
+    }
+    format_to!(text, "</b>\n\n{}\n\n", html::escape(&poll.question));
+    for opt in &poll.options {
+        if poll.is_closed {
+            let percent = opt.voter_count * 100 / poll.total_voter_count;
+            format_to!(text, "<code>{percent:>3}%</code> ");
+        } else {
+            format_to!(text, "◯ ");
+        }
+        format_to!(text, "{}\n", html::escape(&opt.text));
+    }
+    text
 }
