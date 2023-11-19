@@ -155,6 +155,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
             .inspect(modules::resident_tracker::handle_update)
             .branch(
                 Update::filter_message()
+                    .filter(|msg: Message| !msg.chat.is_channel())
                     .enter_dialogue::<Message, InMemStorage<State>, State>()
                     .inspect_async(reset_dialogue_on_command)
                     .inspect_err(modules::rename_closed_topics::inspect_message)
