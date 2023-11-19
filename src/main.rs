@@ -151,8 +151,9 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     let mut dispatcher = Dispatcher::builder(
         bot.clone(),
         dptree::entry()
-            .inspect(modules::tg_scraper::scrape) // should be the first handler
-            .inspect(modules::resident_tracker::handle_update)
+            // should be the first handler
+            .inspect(modules::tg_scraper::inspect_update)
+            .inspect(modules::resident_tracker::inspect_update)
             .branch(
                 Update::filter_message()
                     .filter(|msg: Message| !msg.chat.is_channel())
@@ -231,8 +232,8 @@ fn scrape_log(
                 continue;
             }
             let update: Update = serde_json::from_str(&line)?;
-            modules::tg_scraper::scrape_raw(conn, &update)?;
-            modules::resident_tracker::handle_update_raw(
+            modules::tg_scraper::scrape(conn, &update)?;
+            modules::resident_tracker::scrape(
                 conn,
                 &update,
                 &residential_chats

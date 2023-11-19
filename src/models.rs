@@ -1,3 +1,5 @@
+//! Database and Serde models.
+
 use std::fmt::Debug;
 
 use diesel::prelude::*;
@@ -148,7 +150,7 @@ pub struct NewNeededItem<'a> {
 
 #[derive(Clone, Debug, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::needed_items)]
-pub struct NeededItem2 {
+pub struct NeededItem {
     pub rowid: i32,
     pub request_chat_id: DbChatId,
     pub request_message_id: DbMessageId,
@@ -177,6 +179,7 @@ config_option_def!(wikijs_update_state, crate::utils::WikiJsUpdateState);
 config_option_def!(needs_last_pin, NeedsLastPin);
 
 // Serde models
+
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct DataResident {
     #[salvo(schema(value_type = DbUserId))]

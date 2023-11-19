@@ -1,3 +1,5 @@
+//! Modules that define the bot's functionality.
+
 pub mod basic;
 pub mod borrowed_items;
 pub mod debates;

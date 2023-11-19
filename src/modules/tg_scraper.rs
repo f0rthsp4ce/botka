@@ -1,3 +1,5 @@
+//! Passively scrape Telegram updates and store various info in the database.
+
 use std::sync::Arc;
 
 use diesel::{ExpressionMethods, RunQueryDsl, SqliteConnection};
@@ -11,7 +13,7 @@ use crate::db::{DbChatId, DbMessageId, DbThreadId};
 use crate::utils::Sqlizer;
 use crate::{models, schema};
 
-/// Extract all users' info from a message.
+/// Scrapped info from an update.
 struct ScrapedInfo<'a> {
     users: Vec<models::NewTgUser<'a>>,
     chats: Vec<models::NewTgChat<'a>>,
@@ -19,6 +21,7 @@ struct ScrapedInfo<'a> {
     topics: Vec<ChatTopicUpdate<'a>>,
 }
 
+/// Scrapped info from an update about a chat topic.
 struct ChatTopicUpdate<'a> {
     chat_id: DbChatId,
     topic_id: DbThreadId,
@@ -29,11 +32,13 @@ struct ChatTopicUpdate<'a> {
     icon_emoji: Option<&'a str>,
 }
 
-pub fn scrape(env: Arc<BotEnv>, upd: Update) {
-    env.transaction(|conn| scrape_raw(conn, &upd)).unwrap();
+/// Wrapper around [scrape].
+pub fn inspect_update(env: Arc<BotEnv>, upd: Update) {
+    env.transaction(|conn| scrape(conn, &upd)).unwrap();
 }
 
-pub fn scrape_raw(
+/// Scrape an update and store various info in the database.
+pub fn scrape(
     conn: &mut SqliteConnection,
     upd: &Update,
 ) -> Result<(), diesel::result::Error> {

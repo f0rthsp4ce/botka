@@ -1,3 +1,12 @@
+//! Bot configuration.
+//!
+//! For documentation on each field, see comments in the `config.example.yaml`
+//! file in the repository root. Here its contents:
+//!
+//! ```yaml
+#![doc = include_str!("../config.example.yaml")]
+//! ```
+
 use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
@@ -5,6 +14,7 @@ use teloxide::types::{ChatId, ThreadId, UserId};
 
 use crate::utils::ThreadIdPair;
 
+/// The root configuration structure for the bot.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub telegram: Telegram,

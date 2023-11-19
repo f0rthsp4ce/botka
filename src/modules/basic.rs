@@ -1,3 +1,5 @@
+//! Various commands that do not belong to any other module.
+
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::io::Write as _;
@@ -15,14 +17,14 @@ use teloxide::utils::command::BotCommands;
 use teloxide::utils::html;
 
 use crate::common::{
-    filter_command, format_users, BotEnv, CommandHandler, HasCommandRules,
-    HasCommandRulesTrait, MyDialogue, State, TopicEmojis,
+    filter_command, format_users, BotCommandsExt, BotCommandsExtTrait, BotEnv,
+    TopicEmojis, UpdateHandler,
 };
 use crate::db::{DbChatId, DbUserId};
 use crate::utils::{write_message_link, BotExt};
 use crate::{models, schema};
 
-#[derive(BotCommands, Clone, HasCommandRules!)]
+#[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
 pub enum Commands {
     #[command(description = "display this text.")]
@@ -46,18 +48,16 @@ pub enum Commands {
     Version,
 }
 
-pub fn command_handler() -> CommandHandler<Result<()>> {
-    filter_command::<Commands, _>().endpoint(start)
+pub fn command_handler() -> UpdateHandler {
+    filter_command::<Commands>().endpoint(start)
 }
 
 async fn start<'a>(
     bot: Bot,
-    dialogue: MyDialogue,
     env: Arc<BotEnv>,
     msg: Message,
     command: Commands,
 ) -> Result<()> {
-    dialogue.update(State::Start).await?;
     match command {
         Commands::Help => cmd_help(bot, msg).await?,
         Commands::Residents => cmd_list_residents(bot, env, msg).await?,
@@ -91,7 +91,7 @@ async fn cmd_help(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-fn commands_help<T: HasCommandRulesTrait + BotCommands>() -> String {
+fn commands_help<T: BotCommands + BotCommandsExtTrait>() -> String {
     let descriptions = T::descriptions().to_string();
     let global_description =
         descriptions.find("\n\n/").map(|i| &descriptions[..i]);

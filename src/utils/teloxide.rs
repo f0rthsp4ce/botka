@@ -7,13 +7,16 @@ use teloxide::requests::{JsonRequest, MultipartRequest};
 use teloxide::types::{ChatId, InputFile, MessageId, ThreadId, User};
 use teloxide::utils::html;
 
+/// An extension trait for [`Bot`].
 pub trait BotExt {
+    /// Similar to [`Bot::send_message`], but replies to the given message.
     fn reply_message<T: Into<String>>(
         &self,
         msg: &Message,
         text: T,
     ) -> JsonRequest<payloads::SendMessage>;
 
+    /// Similar to [`Bot::send_poll`], but replies to the given message.
     fn reply_poll<Q: Into<String>, O: IntoIterator<Item = String>>(
         &self,
         msg: &Message,
@@ -21,6 +24,7 @@ pub trait BotExt {
         options: O,
     ) -> JsonRequest<payloads::SendPoll>;
 
+    /// Similar to [`Bot::send_photo`], but replies to the given message.
     fn reply_photo(
         &self,
         msg: &Message,
@@ -67,6 +71,7 @@ impl BotExt for Bot {
 
 pub struct UserHtmlLink<'a>(&'a User);
 
+/// An extension trait for [`teloxide::types::User`].
 pub trait UserExt {
     fn html_link(&self) -> UserHtmlLink<'_>;
 }
@@ -92,6 +97,7 @@ impl Display for UserHtmlLink<'_> {
     }
 }
 
+/// A pair of chat and thread IDs. Uniquely identifies Telegram thread.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
 pub struct ThreadIdPair {
     pub chat: ChatId,
@@ -99,6 +105,7 @@ pub struct ThreadIdPair {
 }
 
 impl ThreadIdPair {
+    /// Checks if the given message belongs to this thread.
     pub fn has_message(&self, msg: &Message) -> bool {
         self.chat == msg.chat.id && Some(self.thread) == msg.thread_id
     }

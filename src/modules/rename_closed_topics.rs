@@ -1,5 +1,8 @@
 //! Prefixes closed topics with "\[×] " and removes the prefix when they are
 //! reopened.
+//!
+//! **Scope**: all chats with topics in which the bot has "Manage Topics" admin
+//! right.
 
 use std::sync::Arc;
 

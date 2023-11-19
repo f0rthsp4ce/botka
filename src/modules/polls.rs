@@ -1,3 +1,8 @@
+//! Intercept polls to track who voted and who didn't.
+//!
+//! **Scope**: all new non-anonymous polls created by residents, which start
+//! with the `!` character.
+
 use std::fmt::Write;
 use std::sync::Arc;
 
@@ -11,21 +16,21 @@ use teloxide::types::{
 };
 
 use crate::common::{
-    format_user, format_users, is_resident, BotEnv, CommandHandler,
+    format_user, format_users, is_resident, BotEnv, UpdateHandler,
 };
 use crate::db::DbUserId;
 use crate::utils::{BotExt, ResultExt, Sqlizer};
 use crate::{models, schema};
 
-pub fn message_handler() -> CommandHandler<Result<()>> {
+pub fn message_handler() -> UpdateHandler {
     dptree::filter_map(filter_polls).endpoint(handle_message)
 }
 
-pub fn poll_answer_handler() -> CommandHandler<Result<()>> {
+pub fn poll_answer_handler() -> UpdateHandler {
     Update::filter_poll_answer().endpoint(handle_poll_answer)
 }
 
-pub fn callback_handler() -> CommandHandler<Result<()>> {
+pub fn callback_handler() -> UpdateHandler {
     dptree::filter_map(filter_callbacks).endpoint(handle_callback)
 }
 

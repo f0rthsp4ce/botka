@@ -1,3 +1,5 @@
+//! Debates using scheduled messages.
+
 use std::fmt::Write;
 use std::sync::Arc;
 
@@ -10,13 +12,13 @@ use teloxide::utils::html;
 use teloxide::RequestError;
 
 use crate::common::{
-    filter_command, format_users, BotEnv, CommandHandler, HasCommandRules,
-    MyDialogue, State,
+    filter_command, format_users, BotCommandsExt, BotEnv, MyDialogue, State,
+    UpdateHandler,
 };
 use crate::db::DbUserId;
 use crate::utils::BotExt;
 
-#[derive(BotCommands, Clone, HasCommandRules!)]
+#[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
 #[allow(clippy::enum_variant_names)]
 pub enum Commands {
@@ -37,8 +39,8 @@ pub enum Commands {
     DebateEnd,
 }
 
-pub fn command_handler() -> CommandHandler<Result<()>> {
-    filter_command::<Commands, _>().endpoint(handle_debate_command)
+pub fn command_handler() -> UpdateHandler {
+    filter_command::<Commands>().endpoint(handle_debate_command)
 }
 
 async fn handle_debate_command<'a>(

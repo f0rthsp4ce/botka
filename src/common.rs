@@ -1,3 +1,5 @@
+//! Common helpers to be used by various bot modules.
+
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -8,7 +10,6 @@ use diesel::{
 };
 use itertools::Itertools;
 use teloxide::dispatching::dialogue::InMemStorage;
-use teloxide::dispatching::DpHandlerDescription;
 use teloxide::prelude::Dialogue;
 use teloxide::requests::Requester;
 use teloxide::types::{Me, Message, StickerKind, User, UserId};
@@ -20,12 +21,9 @@ use crate::config::Config;
 use crate::db::DbUserId;
 use crate::utils::BotExt;
 
-pub type CommandHandler<Output> = dptree::Handler<
-    'static,
-    dptree::di::DependencyMap,
-    Output,
-    DpHandlerDescription,
->;
+/// Wrapper around [`teloxide::dispatching::UpdateHandler`] to be used in this
+/// crate.
+pub type UpdateHandler = teloxide::dispatching::UpdateHandler<anyhow::Error>;
 
 #[derive(Clone, Default)]
 pub enum State {
@@ -36,10 +34,10 @@ pub enum State {
 
 pub type MyDialogue = Dialogue<State, InMemStorage<State>>;
 
-/// Rules describing where and who can execute a command.
+/// Access rules describing where and who can execute a command.
 #[derive(Eq, PartialEq, Debug)]
 #[allow(clippy::struct_excessive_bools)]
-pub struct CommandRules {
+pub struct CommandAccessRules {
     /// Require an user to be a bot admin to execute this command
     pub admin: bool,
     /// Require an user to be a resident to execute this command
@@ -50,23 +48,28 @@ pub struct CommandRules {
     pub in_group: bool,
 }
 
-impl CommandRules {
+impl CommandAccessRules {
     pub const fn new() -> Self {
         Self { admin: false, resident: false, in_private: true, in_group: true }
     }
 }
 
-impl Default for CommandRules {
+impl Default for CommandAccessRules {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub trait HasCommandRulesTrait {
-    const COMMAND_RULES: &'static [CommandRules];
-    fn command_rules(&self) -> CommandRules;
+/// An extension to [`BotCommands`] trait that allows to specify command rules
+/// for each command.
+///
+/// [`BotCommands`]: teloxide::utils::command::BotCommands
+pub trait BotCommandsExtTrait: BotCommands {
+    const COMMAND_RULES: &'static [CommandAccessRules];
+    fn command_rules(&self) -> CommandAccessRules;
 }
 
+/// Bot environment: global state shared between all handlers.
 pub struct BotEnv {
     pub conn: Mutex<SqliteConnection>,
     pub config: Arc<Config>,
@@ -86,9 +89,9 @@ impl BotEnv {
     }
 }
 
-/// Derive macro for `HasCommandRules` trait. Should be applied with
-/// `macro_rules_attribute::derive`.
-macro_rules! HasCommandRules {
+/// Derive macro for [`BotCommandsExtTrait`] trait. Should be applied with
+/// [`macro_rules_attribute::derive`].
+macro_rules! BotCommandsExt {
     (
         $( #[ $_attr:meta ] )*
         $pub:vis
@@ -99,38 +102,41 @@ macro_rules! HasCommandRules {
             ),* $(,)?
         }
     ) => {
-        impl $crate::common::HasCommandRulesTrait for $name {
-            const COMMAND_RULES: &'static [$crate::common::CommandRules] =
-                &[
-                    $(
-                        {
-                            #[allow(unused_mut)]
-                            let mut meta = $crate::common::CommandRules::new();
-                            HasCommandRules!(impl set_meta; meta; $( #[ $($attr)* ] )* );
-                            meta
-                        }
-                    ),*
-                ]
+        impl $crate::common::BotCommandsExtTrait for $name {
+            const COMMAND_RULES: &'static [$crate::common::CommandAccessRules] =
+                &[$({
+                    #[allow(unused_mut)]
+                    let mut meta = $crate::common::CommandAccessRules::new();
+                    BotCommandsExt!(
+                        impl set_meta;
+                        meta;
+                        $( #[ $($attr)* ] )*
+                    );
+                    meta
+                }),*]
             ;
-            fn command_rules(&self) -> $crate::common::CommandRules {
-                match self {
-                    $(
-                        HasCommandRules!(
-                            impl skip_item_args;
-                            $item $( ( $($item_args)* ) )?
-                        ) => {
-                            #[allow(unused_mut)]
-                            let mut meta = $crate::common::CommandRules::default();
-                            HasCommandRules!(impl set_meta; meta; $( #[ $($attr)* ] )* );
-                            meta
-                        }
-                    )*
-                }
+            fn command_rules(&self) -> $crate::common::CommandAccessRules {
+                match self {$(
+                    BotCommandsExt!(
+                        impl skip_item_args;
+                        $item $( ( $($item_args)* ) )?
+                    ) => {
+                        #[allow(unused_mut)]
+                        let mut meta =
+                            $crate::common::CommandAccessRules::default();
+                        BotCommandsExt!(
+                            impl set_meta;
+                            meta;
+                            $( #[ $($attr)* ] )*
+                        );
+                        meta
+                    }
+                )*}
             }
         }
     };
 
-    // Internal rules, using https://stackoverflow.com/a/40484901 trick
+    // Internal rules, using <https://stackoverflow.com/a/40484901> trick
     // set_meta
     (
         impl set_meta;
@@ -139,7 +145,7 @@ macro_rules! HasCommandRules {
         $( #[ $( $rest:tt )* ] )*
     ) => {
         $( $name.$meta_key = $meta_value; )*
-        HasCommandRules!(impl set_meta; $name; $( #[ $( $rest )* ] )* );
+        BotCommandsExt!(impl set_meta; $name; $( #[ $( $rest )* ] )* );
     };
     (
         impl set_meta;
@@ -147,7 +153,7 @@ macro_rules! HasCommandRules {
         #[ $attr:meta ]
         $( #[ $( $rest:tt )* ] )*
     ) => {
-        HasCommandRules!(impl set_meta; $name; $( #[ $( $rest )* ] )* );
+        BotCommandsExt!(impl set_meta; $name; $( #[ $( $rest )* ] )* );
     };
     (
         impl set_meta;
@@ -159,7 +165,7 @@ macro_rules! HasCommandRules {
     (impl skip_item_args; $v:ident($($t:ty),+) ) => { Self::$v(..) };
 }
 
-pub(crate) use HasCommandRules;
+pub(crate) use BotCommandsExt;
 
 pub fn format_users<'a>(
     out: &mut String,
@@ -212,23 +218,24 @@ pub fn format_user<'a>(
     }
 }
 
+/// Similar to [`teloxide::filter_command`], but for commands implementing
+/// [`BotCommandsExtTrait`].
 #[must_use]
-pub fn filter_command<C, Output>() -> CommandHandler<Output>
+pub fn filter_command<C>() -> UpdateHandler
 where
-    C: BotCommands + HasCommandRulesTrait + Send + Sync + 'static,
-    Output: Send + Sync + 'static,
+    C: BotCommands + BotCommandsExtTrait + Send + Sync + 'static,
 {
-    dptree::filter_map_async(filter_command2::<C>)
+    dptree::filter_map_async(filter_command_impl::<C>)
 }
 
-async fn filter_command2<C>(
+async fn filter_command_impl<C>(
     bot: Bot,
     me: Me,
     msg: Message,
     env: Arc<BotEnv>,
 ) -> Option<C>
 where
-    C: BotCommands + HasCommandRulesTrait + Send + Sync + 'static,
+    C: BotCommands + BotCommandsExtTrait + Send + Sync + 'static,
 {
     let cmd = C::parse(msg.text()?, &me.user.username?).ok()?;
     let rules = cmd.command_rules();
@@ -320,7 +327,8 @@ mod tests {
 
     use super::*;
 
-    #[derive(Debug, HasCommandRules!)]
+    #[derive(Debug, BotCommands, BotCommandsExt!)]
+    #[command(parse_with = "split")]
     enum MyCommand {
         Defaults,
 
@@ -342,20 +350,23 @@ mod tests {
     fn test() {
         assert_eq!(
             MyCommand::Defaults.command_rules(),
-            CommandRules::default()
+            CommandAccessRules::default()
         );
-        assert_eq!(MyCommand::WithDoc.command_rules(), CommandRules::default());
+        assert_eq!(
+            MyCommand::WithDoc.command_rules(),
+            CommandAccessRules::default()
+        );
         assert_eq!(
             MyCommand::WithCustom.command_rules(),
-            CommandRules { resident: true, ..Default::default() }
+            CommandAccessRules { resident: true, ..Default::default() }
         );
         assert_eq!(
             MyCommand::WithDocAndCustom.command_rules(),
-            CommandRules { admin: true, ..Default::default() }
+            CommandAccessRules { admin: true, ..Default::default() }
         );
         assert_eq!(
             MyCommand::WithArgsAndCustom(1, 2).command_rules(),
-            CommandRules {
+            CommandAccessRules {
                 in_private: true,
                 in_group: true,
                 ..Default::default()

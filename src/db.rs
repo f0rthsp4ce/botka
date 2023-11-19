@@ -89,7 +89,7 @@ impl<T: Serialize + DeserializeOwned> ConfigOptionDef<T> {
     }
 }
 
-macro_rules! make_db_wrapper {
+macro_rules! make_db_newtype {
     ($name:ident, $inner:ty) => {
         #[derive(
             Copy,
@@ -105,14 +105,15 @@ macro_rules! make_db_wrapper {
             DieselNewType,
             ToSchema,
         )]
+        #[doc = "A newtype wrapper for a Telegram type to be stored in the database."]
         pub struct $name($inner);
     };
 }
 
-make_db_wrapper!(DbUserId, i64);
-make_db_wrapper!(DbChatId, i64);
-make_db_wrapper!(DbMessageId, i32);
-make_db_wrapper!(DbThreadId, i32);
+make_db_newtype!(DbUserId, i64);
+make_db_newtype!(DbChatId, i64);
+make_db_newtype!(DbMessageId, i32);
+make_db_newtype!(DbThreadId, i32);
 
 impl From<UserId> for DbUserId {
     fn from(id: UserId) -> Self {

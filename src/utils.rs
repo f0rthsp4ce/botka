@@ -1,3 +1,5 @@
+//! Various self-contained utilities.
+
 mod diesel_json;
 mod dptree_ext;
 mod format_to;

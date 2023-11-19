@@ -1,4 +1,8 @@
 //! Forward pinned messages from specified source chats to the target channel.
+//!
+//! **Scope**: chats listed in [`telegram.chats.forward_pins`] config option.
+//!
+//! [`telegram.chats.forward_pins`]: crate::config::TelegramChats::forward_pins
 
 use std::iter::once;
 use std::sync::Arc;

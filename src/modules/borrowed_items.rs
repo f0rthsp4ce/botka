@@ -1,3 +1,10 @@
+//! A module to track borrowed items.
+//!
+//! **Scope**: chat topic listed in the [`telegram.chats.borrowed_items`] config
+//! option.
+//!
+//! [`telegram.chats.borrowed_items`]: crate::config::TelegramChats::borrowed_items
+
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -15,15 +22,15 @@ use teloxide::types::{
 };
 use teloxide::utils::html;
 
-use crate::common::{BotEnv, CommandHandler};
+use crate::common::{BotEnv, UpdateHandler};
 use crate::utils::Sqlizer;
 use crate::{models, schema};
 
-pub fn command_handler() -> CommandHandler<Result<()>> {
+pub fn command_handler() -> UpdateHandler {
     dptree::filter(filter_messages_in_topic).endpoint(handle_message)
 }
 
-pub fn callback_handler() -> CommandHandler<Result<()>> {
+pub fn callback_handler() -> UpdateHandler {
     dptree::filter_map(filter_callbacks).endpoint(handle_callback)
 }
 

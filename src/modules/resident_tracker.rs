@@ -1,3 +1,10 @@
+//! Add or remove users from residency when they join or leave residential
+//! chats.
+//!
+//! **Scope**: chats listed in [`telegram.chats.residential`] config option.
+//!
+//! [`telegram.chats.residential`]: crate::config::TelegramChats::residential
+
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -16,9 +23,8 @@ struct Filtered<'a> {
     is_joined: bool,
 }
 
-/// Add or remove users from residency when they join or leave residential
-/// chats.
-pub fn handle_update(env: Arc<BotEnv>, upd: Update) {
+/// Wrapper around [scrape].
+pub fn inspect_update(env: Arc<BotEnv>, upd: Update) {
     let residential_chats = env.config.telegram.chats.residential.as_slice();
     let Some(filtered) = filter(&upd, residential_chats) else { return };
     env.transaction(|conn| {
@@ -27,7 +33,9 @@ pub fn handle_update(env: Arc<BotEnv>, upd: Update) {
     .log_error("resident_tracker::handle_update");
 }
 
-pub fn handle_update_raw(
+/// Scrape an update for residential chat joins/leaves and update the
+/// `residents` table accordingly.
+pub fn scrape(
     conn: &mut SqliteConnection,
     upd: &Update,
     residential_chats: &[ChatId],

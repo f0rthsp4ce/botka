@@ -1,3 +1,6 @@
+//! Watch for updates in Wiki.js and send a notification to the specified
+//! thread.
+
 use std::sync::Arc;
 use std::time::Duration;
 

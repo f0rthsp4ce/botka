@@ -1,3 +1,5 @@
+//! `/userctl` command to add or remove MAC addresses.
+
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -7,11 +9,11 @@ use macro_rules_attribute::derive;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
 
-use crate::common::{filter_command, BotEnv, CommandHandler, HasCommandRules};
+use crate::common::{filter_command, BotCommandsExt, BotEnv, UpdateHandler};
 use crate::db::DbUserId;
 use crate::utils::BotExt;
 
-#[derive(BotCommands, Clone, HasCommandRules!)]
+#[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
 pub enum Commands {
     #[command(
@@ -32,8 +34,8 @@ struct UserctlArgs {
     remove_mac: Vec<macaddr::MacAddr6>,
 }
 
-pub fn command_handler() -> CommandHandler<Result<()>> {
-    filter_command::<Commands, _>().endpoint(cmd_userctl)
+pub fn command_handler() -> UpdateHandler {
+    filter_command::<Commands>().endpoint(cmd_userctl)
 }
 
 async fn cmd_userctl(

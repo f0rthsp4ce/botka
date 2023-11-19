@@ -1,3 +1,11 @@
+//! Track shopping list items.
+//!
+//! ## Scope
+//! - Messages in a thread specified in [`telegram.chats.needs`] config option.
+//! - A command available to all residents.
+//!
+//! [`telegram.chats.needs`]: crate::config::TelegramChats::needs
+
 use std::fmt::Write;
 use std::sync::Arc;
 
@@ -16,7 +24,7 @@ use teloxide::types::{
 use teloxide::utils::html;
 
 use crate::common::{
-    filter_command, format_user, BotEnv, CommandHandler, HasCommandRules,
+    filter_command, format_user, BotCommandsExt, BotEnv, UpdateHandler,
 };
 use crate::config::Config;
 use crate::db::DbUserId;
@@ -26,7 +34,7 @@ use crate::utils::{
 };
 use crate::{models, schema};
 
-#[derive(Debug, BotCommands, Clone, HasCommandRules!)]
+#[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
 pub enum Commands {
     #[command(description = "show shopping list.")]
@@ -34,9 +42,9 @@ pub enum Commands {
     Needs,
 }
 
-pub fn message_handler() -> CommandHandler<Result<()>> {
+pub fn message_handler() -> UpdateHandler {
     dptree::entry()
-        .branch(filter_command::<Commands, _>().endpoint(handle_command))
+        .branch(filter_command::<Commands>().endpoint(handle_command))
         .branch(
             dptree::filter(|env: Arc<BotEnv>, msg: Message| {
                 env.config.telegram.chats.needs.has_message(&msg)
@@ -45,7 +53,7 @@ pub fn message_handler() -> CommandHandler<Result<()>> {
         )
 }
 
-pub fn callback_handler() -> CommandHandler<Result<()>> {
+pub fn callback_handler() -> UpdateHandler {
     dptree::filter_map(filter_callbacks).endpoint(handle_callback)
 }
 
@@ -176,7 +184,7 @@ async fn update_pinned_needs_message(bot: &Bot, env: &BotEnv) -> Result<()> {
 fn command_needs_message_and_buttons(
     env: &BotEnv,
 ) -> Result<(String, Vec<Vec<InlineKeyboardButton>>)> {
-    let items: Vec<(models::NeededItem2, Option<models::TgUser>)> =
+    let items: Vec<(models::NeededItem, Option<models::TgUser>)> =
         schema::needed_items::table
             .left_join(
                 schema::tg_users::table.on(schema::tg_users::columns::id
@@ -288,7 +296,7 @@ async fn handle_callback_bought(
         #[allow(clippy::wildcard_imports)]
         use schema::needed_items::dsl::*;
 
-        let item_: Option<models::NeededItem2> = schema::needed_items::table
+        let item_: Option<models::NeededItem> = schema::needed_items::table
             .filter(rowid.eq(rowid_))
             .get_result(conn)
             .optional()?;
@@ -361,16 +369,16 @@ async fn handle_callback_undo(
         #[allow(clippy::wildcard_imports)]
         use schema::needed_items::dsl::*;
 
-        let item_: Option<models::NeededItem2> = schema::needed_items::table
+        let item_: Option<models::NeededItem> = schema::needed_items::table
             .filter(rowid.eq(rowid_))
             .get_result(conn)
             .optional()?;
         let item_ = match item_ {
             None => return Ok(Err("Could not find item.")),
-            Some(models::NeededItem2 { buyer_user_id: None, .. }) => {
+            Some(models::NeededItem { buyer_user_id: None, .. }) => {
                 return Ok(Err("Item already undone."))
             }
-            Some(models::NeededItem2 { buyer_user_id: Some(id), .. })
+            Some(models::NeededItem { buyer_user_id: Some(id), .. })
                 if UserId::from(id) != callback.from.id =>
             {
                 return Ok(Err("You did not buy this item."))

@@ -8,7 +8,7 @@ use nom::sequence::tuple;
 use nom::IResult;
 use serde::{Deserialize, Deserializer};
 
-/// Deserialize a duration returned by mikrotik, e.g. "2w3d4h56m23s".
+/// Deserialize a duration returned by mikrotik, e.g. `"2w3d4h56m23s"`.
 pub fn deserealize_duration<'de, D>(
     deserializer: D,
 ) -> Result<Duration, D::Error>
