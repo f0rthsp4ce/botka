@@ -25,8 +25,6 @@ pub async fn inspect_message<'a>(
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
-    let Some(thread_id) = msg.thread_id else { return Ok(()) };
-
     let closed = match msg.kind {
         MessageKind::ForumTopicClosed(_) => true,
         MessageKind::ForumTopicReopened(_) => false,
@@ -36,7 +34,7 @@ pub async fn inspect_message<'a>(
     use crate::schema::tg_chat_topics::dsl as t;
     let Some(old_name) = t::tg_chat_topics
         .filter(t::chat_id.eq(DbChatId::from(msg.chat.id)))
-        .filter(t::topic_id.eq(DbThreadId::from(thread_id)))
+        .filter(t::topic_id.eq(DbThreadId::from(msg.thread_id)))
         .select(t::name)
         .first::<Option<String>>(&mut *env.conn())?
     else {
@@ -52,11 +50,15 @@ pub async fn inspect_message<'a>(
         return Ok(());
     }
 
-    bot.edit_forum_topic(msg.chat.id, thread_id).name(&new_name).await?;
+    if let Some(thread_id) = msg.thread_id {
+        bot.edit_forum_topic(msg.chat.id, thread_id).name(&new_name).await?;
+    } else {
+        bot.edit_general_forum_topic(msg.chat.id, &new_name).await?;
+    }
 
     let update_count = diesel::update(t::tg_chat_topics)
         .filter(t::chat_id.eq(DbChatId::from(msg.chat.id)))
-        .filter(t::topic_id.eq(DbThreadId::from(thread_id)))
+        .filter(t::topic_id.eq(DbThreadId::from(msg.thread_id)))
         .filter(t::name.eq(old_name)) // Optimistic locking
         .set(t::name.eq(new_name))
         .execute(&mut *env.conn())?;
