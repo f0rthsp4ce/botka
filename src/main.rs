@@ -286,12 +286,23 @@ fn run_signal_handler(
             tokio::signal::ctrl_c().await.expect("Failed to listen for SIGINT");
             cancel.cancel();
             match bot_shutdown_token.shutdown() {
+                #[allow(
+                    clippy::redundant_pub_crate,
+                    // reason = "https://github.com/rust-lang/rust-clippy/issues/10636"
+                )]
                 Ok(f) => {
                     log::info!(
                         "^C received, trying to shutdown the dispatcher..."
                     );
-                    f.await;
-                    log::info!("dispatcher is shutdown...");
+                    tokio::select! {
+                        () = f => {
+                            log::info!("dispatcher is shutdown...");
+                        }
+                        _ = tokio::signal::ctrl_c() => {
+                            log::info!("Got another ^C, exiting immediately");
+                            std::process::exit(0);
+                        }
+                    }
                 }
                 Err(_) => {
                     log::info!("^C received, the dispatcher isn't running, ignoring the signal");
