@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use anyhow::Result;
 use hyper::server::conn::AddrIncoming;
@@ -84,10 +84,7 @@ async fn handle_request(
     in_request: Request<Body>,
     proxy: Arc<Proxy>,
 ) -> Result<Response<Body>> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = std::time::UNIX_EPOCH.elapsed().unwrap_or_default().as_secs();
 
     let (mut in_request_parts, in_request_body) = in_request.into_parts();
     in_request_parts.uri = Uri::builder()

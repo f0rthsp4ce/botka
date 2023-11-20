@@ -17,15 +17,14 @@ pub fn register_metrics() {
     // Constant metrics
 
     // botka_start_time_seconds
-    let start_time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64();
     metrics::describe_gauge!(
         "botka_start_time_seconds",
         "Unix timestamp of the bot start time."
     );
-    metrics::gauge!("botka_start_time_seconds", start_time);
+    metrics::gauge!(
+        "botka_start_time_seconds",
+        std::time::UNIX_EPOCH.elapsed().unwrap_or_default().as_secs_f64(),
+    );
 
     // botka_build_info
     metrics::describe_gauge!(
@@ -72,15 +71,8 @@ pub fn update_service(name: &'static str, success: bool) {
     );
     metrics::gauge!(
         "botka_service_last_access_timestamp_seconds",
-        now_seconds_f64(),
+        std::time::UNIX_EPOCH.elapsed().unwrap_or_default().as_secs_f64(),
         "service" => name,
         "status" => if success { "success" } else { "failure" },
     );
-}
-
-fn now_seconds_f64() -> f64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
 }
