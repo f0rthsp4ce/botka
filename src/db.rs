@@ -162,6 +162,12 @@ impl From<ThreadId> for DbThreadId {
     }
 }
 
+impl From<Option<ThreadId>> for DbThreadId {
+    fn from(id: Option<ThreadId>) -> Self {
+        Self(id.map_or(1, |id| id.0 .0))
+    }
+}
+
 impl From<DbThreadId> for ThreadId {
     fn from(id: DbThreadId) -> Self {
         Self(MessageId(id.0))

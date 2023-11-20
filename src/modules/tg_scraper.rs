@@ -144,7 +144,7 @@ impl<'a> ScrapedInfo<'a> {
             MessageKind::ForumTopicCreated(k) => {
                 self.topics.push(ChatTopicUpdate {
                     chat_id: msg.chat.id.into(),
-                    topic_id: msg.thread_id.unwrap().into(),
+                    topic_id: msg.thread_id.into(),
                     message_id: msg.id.into(),
                     closed: Some(false),
                     name: Some(k.forum_topic_created.name.as_str()),
@@ -160,7 +160,7 @@ impl<'a> ScrapedInfo<'a> {
             MessageKind::ForumTopicEdited(k) => {
                 self.topics.push(ChatTopicUpdate {
                     chat_id: msg.chat.id.into(),
-                    topic_id: msg.thread_id.unwrap().into(),
+                    topic_id: msg.thread_id.into(),
                     message_id: msg.id.into(),
                     closed: None,
                     name: k.forum_topic_edited.name.as_deref(),
@@ -174,7 +174,7 @@ impl<'a> ScrapedInfo<'a> {
             MessageKind::ForumTopicClosed(_) => {
                 self.topics.push(ChatTopicUpdate {
                     chat_id: msg.chat.id.into(),
-                    topic_id: msg.thread_id.unwrap().into(),
+                    topic_id: msg.thread_id.into(),
                     message_id: msg.id.into(),
                     closed: Some(true),
                     name: None,
@@ -185,7 +185,7 @@ impl<'a> ScrapedInfo<'a> {
             MessageKind::ForumTopicReopened(_) => {
                 self.topics.push(ChatTopicUpdate {
                     chat_id: msg.chat.id.into(),
-                    topic_id: msg.thread_id.unwrap().into(),
+                    topic_id: msg.thread_id.into(),
                     message_id: msg.id.into(),
                     closed: Some(false),
                     name: None,
