@@ -17,4 +17,6 @@ pub use parsers::{deserealize_duration, parse_tgapi_method};
 pub use replace_urls::replace_urls_with_titles;
 pub use wikijs::{get_wikijs_updates, WikiJsUpdateState};
 
-pub use self::teloxide::{write_message_link, BotExt, ThreadIdPair, UserExt};
+pub use self::teloxide::{
+    write_message_link, BotExt, ThreadIdPair, UserExt, GENERAL_THREAD_ID,
+};

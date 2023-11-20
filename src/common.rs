@@ -19,7 +19,7 @@ use teloxide::Bot;
 
 use crate::config::Config;
 use crate::db::DbUserId;
-use crate::utils::BotExt;
+use crate::utils::{BotExt, GENERAL_THREAD_ID};
 
 /// Wrapper around [`teloxide::dispatching::UpdateHandler`] to be used in this
 /// crate.
@@ -313,11 +313,14 @@ impl TopicEmojis {
 
     /// Get emoji for a topic.
     pub fn get(&self, topic: &crate::models::TgChatTopic) -> &str {
-        topic
-            .icon_emoji
-            .as_ref()
-            .and_then(|e| self.0.get(e))
-            .map_or("💬", |s| s.as_str())
+        topic.icon_emoji.as_ref().and_then(|e| self.0.get(e)).map_or(
+            if GENERAL_THREAD_ID == topic.topic_id.into() {
+                "#\u{fe0f}\u{20e3}"
+            } else {
+                "💬"
+            },
+            |s| s.as_str(),
+        )
     }
 }
 

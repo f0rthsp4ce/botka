@@ -7,6 +7,9 @@ use teloxide::requests::{JsonRequest, MultipartRequest};
 use teloxide::types::{ChatId, InputFile, MessageId, ThreadId, User};
 use teloxide::utils::html;
 
+/// The ID of the "general" thread in Telegram.
+pub const GENERAL_THREAD_ID: ThreadId = ThreadId(MessageId(1));
+
 /// An extension trait for [`Bot`].
 pub trait BotExt {
     /// Similar to [`Bot::send_message`], but replies to the given message.

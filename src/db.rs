@@ -12,6 +12,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use teloxide::types::{ChatId, MessageId, Recipient, ThreadId, UserId};
 
+use crate::utils::GENERAL_THREAD_ID;
 use crate::{models, schema};
 
 /// A definition for a typed value stored in the database table `options`.
@@ -165,7 +166,7 @@ impl From<ThreadId> for DbThreadId {
 
 impl From<Option<ThreadId>> for DbThreadId {
     fn from(id: Option<ThreadId>) -> Self {
-        Self(id.map_or(1, |id| id.0 .0))
+        id.unwrap_or(GENERAL_THREAD_ID).into()
     }
 }
 
