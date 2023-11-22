@@ -6,6 +6,10 @@ telegram:
   # Bot administrators
   admins: [1234567890]
 
+  # Ignore all messages, but keep handling button callbacks, poll answers, etc.
+  # Useful when migrating the bot to another bot account.
+  passive_mode: false
+
   # Configuration for specific chat threads.
   chats:
     # List of chats considered as residents-only.

@@ -28,6 +28,7 @@ pub struct Config {
 pub struct Telegram {
     pub token: String,
     pub admins: Vec<UserId>,
+    pub passive_mode: bool,
     pub chats: TelegramChats,
 }
 

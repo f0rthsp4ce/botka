@@ -132,6 +132,10 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         serde_yaml::from_reader(File::open(config_fpath)?)
             .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
 
+    if config.telegram.passive_mode {
+        log::info!("Running in passive mode");
+    }
+
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&config.db)?),
         reqwest_client: reqwest::ClientBuilder::new()
@@ -156,7 +160,10 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
             .inspect(modules::resident_tracker::inspect_update)
             .branch(
                 Update::filter_message()
-                    .filter(|msg: Message| !msg.chat.is_channel())
+                    .filter(|msg: Message, env: Arc<common::BotEnv>| {
+                        !msg.chat.is_channel()
+                            && !env.config.telegram.passive_mode
+                    })
                     .enter_dialogue::<Message, InMemStorage<State>, State>()
                     .inspect_async(reset_dialogue_on_command)
                     .inspect_err(modules::rename_closed_topics::inspect_message)
