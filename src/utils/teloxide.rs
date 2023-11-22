@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use teloxide::payloads;
 use teloxide::prelude::*;
 use teloxide::requests::{JsonRequest, MultipartRequest};
-use teloxide::types::{ChatId, InputFile, MessageId, ThreadId, User};
+use teloxide::types::{
+    ChatId, ChatKind, ChatPublic, InputFile, MessageId, PublicChatKind,
+    PublicChatSupergroup, ThreadId, User,
+};
 use teloxide::utils::html;
 
 /// The ID of the "general" thread in Telegram.
@@ -69,6 +72,50 @@ impl BotExt for Bot {
             self.send_photo(msg.chat.id, photo).reply_to_message_id(msg.id);
         reply.message_thread_id = msg.thread_id;
         reply
+    }
+}
+
+/// An extension trait for [`Message`].
+pub trait MessageExt {
+    /// Similar to [`Message::thread_id`], but returns [`GENERAL_THREAD_ID`] for
+    /// messages in the "general" thread.
+    ///
+    /// NOTE: In Telegram Bot API, such messages don't have fields `thread_id`
+    /// and `is_topic_message`, but we could distinguish them by looking at
+    /// `chat.is_forum` field.
+    fn thread_id_ext(&self) -> Option<ThreadId>;
+}
+
+impl MessageExt for Message {
+    fn thread_id_ext(&self) -> Option<ThreadId> {
+        let is_forum = matches!(
+            &self.chat.kind,
+            ChatKind::Public(ChatPublic {
+                kind: PublicChatKind::Supergroup(PublicChatSupergroup {
+                    is_forum: true,
+                    ..
+                }),
+                ..
+            })
+        );
+        self.thread_id.or_else(|| is_forum.then_some(GENERAL_THREAD_ID))
+    }
+}
+
+/// An extension trait for [`ChatId`].
+pub trait ChatIdExt {
+    /// Returns the ID of the channel or supergroup, if this chat is either of
+    /// them.  This ID could be used in `t.me/c/...` links.
+    fn channel_t_me_id(&self) -> Option<i64>;
+}
+
+impl ChatIdExt for ChatId {
+    fn channel_t_me_id(&self) -> Option<i64> {
+        // https://github.com/teloxide/teloxide/blob/v0.12.2/crates/teloxide-core/src/types/chat_id.rs#L76-L96
+        const MIN_MARKED_CHANNEL_ID: i64 = -1_997_852_516_352;
+        const MAX_MARKED_CHANNEL_ID: i64 = -1_000_000_000_000;
+        (self.0 >= MIN_MARKED_CHANNEL_ID && self.0 <= MAX_MARKED_CHANNEL_ID)
+            .then_some(MAX_MARKED_CHANNEL_ID - self.0)
     }
 }
 

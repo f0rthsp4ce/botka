@@ -15,7 +15,7 @@ use teloxide::utils::html;
 use crate::common::{BotEnv, TopicEmojis};
 use crate::db::{DbChatId, DbThreadId};
 use crate::models;
-use crate::utils::{format_to, UserExt};
+use crate::utils::{format_to, ChatIdExt as _, MessageExt as _, UserExt as _};
 
 pub async fn inspect_message<'a>(
     bot: Bot,
@@ -30,7 +30,7 @@ pub async fn inspect_message<'a>(
     });
     let Some(forward_to) = forward_to else { return Ok(()) };
 
-    let topic_link = render_topic_link(&bot, &env, msg).await?;
+    let topic_link = render_message_link(&bot, &env, msg).await?;
 
     if let Some(poll) = msg.poll().filter(|p| !p.is_anonymous) {
         // Polls with visible voters can't be forwarded to channels.
@@ -51,36 +51,66 @@ pub async fn inspect_message<'a>(
     Ok(())
 }
 
-async fn render_topic_link(
+async fn render_message_link(
     bot: &Bot,
     env: &BotEnv,
     msg: &Message,
 ) -> Result<String> {
-    let chat_id = -msg.chat.id.0 - 1_000_000_000_000;
-    Ok(match msg.thread_id {
-        Some(thread_id) if msg.is_topic_message => {
-            use crate::schema::tg_chat_topics::dsl as t;
-            let topic: Option<models::TgChatTopic> = t::tg_chat_topics
-                .filter(t::chat_id.eq(DbChatId::from(msg.chat.id)))
-                .filter(t::topic_id.eq(DbThreadId::from(thread_id)))
-                .select(t::tg_chat_topics::all_columns())
-                .first(&mut *env.conn())
-                .optional()?;
-            if let Some(topic) = topic {
-                let emojis = TopicEmojis::fetch(bot, once(&topic)).await?;
-                format!(
-                    "<a href=\"https://t.me/c/{chat_id}/{}/{}\">{} {}</a>",
-                    thread_id.0,
-                    msg.id,
-                    emojis.get(&topic),
-                    html::escape(topic.name.as_deref().unwrap_or("???")),
-                )
-            } else {
-                format!("https://t.me/c/{chat_id}/{}/{}", thread_id.0, msg.id)
-            }
+    let Some(chat_id) = msg.chat.id.channel_t_me_id() else {
+        return Ok(msg
+            .chat
+            .title()
+            .map_or_else(|| "Unknown chat".to_string(), html::escape));
+    };
+
+    let mut result = String::new();
+    if let Some(thread_id) = msg.thread_id_ext() {
+        format_to!(
+            result,
+            "<a href=\"https://t.me/c/{chat_id}/{}/{}\">",
+            thread_id.0,
+            msg.id
+        );
+    } else {
+        format_to!(result, "<a href=\"https://t.me/c/{chat_id}/{}\">", msg.id);
+    }
+
+    let mut has_text = false;
+
+    if let Some(thread_id) = msg.thread_id_ext() {
+        has_text = true;
+        use crate::schema::tg_chat_topics::dsl as t;
+        let topic: Option<models::TgChatTopic> = t::tg_chat_topics
+            .filter(t::chat_id.eq(DbChatId::from(msg.chat.id)))
+            .filter(t::topic_id.eq(DbThreadId::from(thread_id)))
+            .select(t::tg_chat_topics::all_columns())
+            .first(&mut *env.conn())
+            .optional()?;
+        if let Some(topic) = topic {
+            let emojis = TopicEmojis::fetch(bot, once(&topic)).await?;
+            format_to!(
+                result,
+                "{} {}",
+                emojis.get(&topic),
+                html::escape(topic.name.as_deref().unwrap_or("Unknown topic")),
+            );
         }
-        _ => format!("https://t.me/c/{}/{}", chat_id, msg.id),
-    })
+    }
+
+    if let Some(title) = msg.chat.title() {
+        if has_text {
+            format_to!(result, " @ ");
+        }
+        has_text = true;
+        format_to!(result, "{}", html::escape(title));
+    }
+
+    if !has_text {
+        format_to!(result, "Unknown chat");
+    }
+
+    format_to!(result, "</a>");
+    Ok(result)
 }
 
 fn render_poll(msg: &Message, poll: &Poll, topic_link: &str) -> String {
