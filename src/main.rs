@@ -201,11 +201,13 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
 
     let cancel = CancellationToken::new();
 
-    join_handles.push(tokio::spawn(modules::updates::task(
-        Arc::clone(&bot_env),
-        bot.clone(),
-        cancel.clone(),
-    )));
+    if !bot_env.config.telegram.passive_mode {
+        join_handles.push(tokio::spawn(modules::updates::task(
+            Arc::clone(&bot_env),
+            bot.clone(),
+            cancel.clone(),
+        )));
+    }
 
     join_handles.push(tokio::spawn(web_srv::run(
         SqliteConnection::establish(&bot_env.config.db)?,
