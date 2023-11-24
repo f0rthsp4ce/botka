@@ -37,7 +37,14 @@ pub struct TelegramChats {
     pub forward_channel: ChatId,
     pub forward_pins: Vec<FowardPins>,
     pub needs: ThreadIdPair,
+    pub resident_owned: Vec<ResidentOwned>,
     pub wikijs_updates: ThreadIdPair,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResidentOwned {
+    pub id: ChatId,
+    pub internal: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

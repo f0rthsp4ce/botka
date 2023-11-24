@@ -31,8 +31,17 @@
             extensions = [ "rust-src" ];
           };
           baseRuntimeDeps = [ pkgs.bash pkgs.imagemagick pkgs.sqlite ];
-          allRuntimeDeps = baseRuntimeDeps ++ [ residents-timeline ];
+          allRuntimeDeps = baseRuntimeDeps
+            ++ [ residents-admin-table residents-timeline ];
           buildDeps = [ pkgs.openssl pkgs.perl pkgs.pkg-config pkgs.sqlite ];
+          pythonDeps = (pkgs.python3.withPackages (p: [ p.pyyaml p.telethon ]));
+          residents-admin-table = pkgs.stdenv.mkDerivation {
+            name = "f0-residents-admin-table";
+            src = ./residents-admin-table.py;
+            dontUnpack = true;
+            propagatedBuildInputs = [ pythonDeps ];
+            installPhase = "install -Dm755 $src $out/bin/$name";
+          };
           residents-timeline = pkgs.buildNpmPackage rec {
             name = "residents-timeline";
             src = nix-filter.lib {
@@ -71,6 +80,8 @@
 
           packages.residents-timeline = residents-timeline;
 
+          packages.residents-admin-table = residents-admin-table;
+
           packages.image = pkgs.dockerTools.buildImage {
             name = "f0bot";
             tag = "latest";
@@ -87,12 +98,15 @@
             stdenv = pkgs.stdenvAdapters.useMoldLinker pkgs.stdenv;
           } {
             buildInputs = [
+              pythonDeps
               rustDev
               (pkgs.diesel-cli.override {
                 postgresqlSupport = false;
                 mysqlSupport = false;
               })
+              pkgs.black
               pkgs.bun
+              pkgs.isort
               pkgs.just
               pkgs.mold
               pkgs.nixfmt

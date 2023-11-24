@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::io::Write as _;
+use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
@@ -33,6 +34,10 @@ pub enum Commands {
     #[command(description = "list residents.")]
     Residents,
 
+    #[command(description = "show residents admin table.")]
+    #[custom(resident = true)]
+    ResidentsAdminTable,
+
     #[command(description = "show residents timeline.")]
     #[custom(resident = true)]
     ResidentsTimeline,
@@ -61,6 +66,9 @@ async fn start<'a>(
     match command {
         Commands::Help => cmd_help(bot, msg).await?,
         Commands::Residents => cmd_list_residents(bot, env, msg).await?,
+        Commands::ResidentsAdminTable => {
+            cmd_residents_admin_table(bot, env, msg).await?;
+        }
         Commands::ResidentsTimeline => {
             cmd_show_residents_timeline(bot, msg).await?;
         }
@@ -146,6 +154,38 @@ async fn cmd_list_residents<'a>(
     format_users(&mut text, residents.iter().map(|(r, u)| (*r, u)));
     text.push('.');
     bot.reply_message(&msg, text)
+        .parse_mode(teloxide::types::ParseMode::Html)
+        .disable_web_page_preview(true)
+        .await?;
+    Ok(())
+}
+
+async fn cmd_residents_admin_table(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+) -> Result<()> {
+    let script_dev_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("residents-admin-table.py");
+    let script_path = if script_dev_path.exists() {
+        script_dev_path.as_os_str()
+    } else {
+        "f0-residents-admin-table".as_ref()
+    };
+
+    bot.send_chat_action(msg.chat.id, teloxide::types::ChatAction::Typing)
+        .await?;
+
+    let table = Command::new(script_path).arg(&env.config_path).output()?;
+    if !table.status.success() {
+        bot.reply_message(&msg, "Failed to generate table.").await?;
+        log::error!(
+            "Failed to generate table: {}",
+            String::from_utf8_lossy(&table.stderr)
+        );
+        return Ok(());
+    }
+    bot.reply_message(&msg, String::from_utf8_lossy(&table.stdout))
         .parse_mode(teloxide::types::ParseMode::Html)
         .disable_web_page_preview(true)
         .await?;

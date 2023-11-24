@@ -32,6 +32,10 @@ telegram:
     # Thread for the 'needs' module.
     needs: { chat: -1001234567890, thread: 123 }
 
+    # List of chats considered as resident-owned. Used to print an admin table.
+    resident_owned:
+      - { id: -1001234567890, internal: true }
+
     # Chat to push Wiki.js update notifications.
     wikijs_updates: { chat: -1001234567890, thread: 123 }
 

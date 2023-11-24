@@ -1,10 +1,12 @@
 default:
 	@just --list
 
-# Autoformat code (rust, nix, yaml)
+# Autoformat code
 fmt:
 	cargo fmt
 	nixfmt flake.nix
+	isort *.py
+	black *.py
 	prettier $PRETTIER_PLUGINS -w \
 		Cargo.toml diesel.toml rustfmt.toml \
 		config.example.yaml \

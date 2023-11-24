@@ -151,6 +151,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                 .with_api_key(config.services.openai.api_key.clone()),
         ),
         config: Arc::new(config),
+        config_path: config_fpath.into(),
     });
 
     let proxy_addr = tracing_proxy::start().await?;

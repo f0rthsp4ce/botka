@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::Result;
@@ -73,6 +74,7 @@ pub trait BotCommandsExtTrait: BotCommands {
 pub struct BotEnv {
     pub conn: Mutex<SqliteConnection>,
     pub config: Arc<Config>,
+    pub config_path: PathBuf,
     pub reqwest_client: reqwest::Client,
     pub openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
 }
