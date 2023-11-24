@@ -22,8 +22,8 @@ pub enum Commands {
     Userctl(String),
 }
 
-#[derive(argh::FromArgs, Debug)]
 /// Control personal configuration.
+#[derive(argh::FromArgs, Debug)]
 struct UserctlArgs {
     /// add mac address
     #[argh(option)]

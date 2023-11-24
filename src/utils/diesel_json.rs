@@ -10,9 +10,9 @@ use diesel::serialize::ToSql;
 use diesel::{AsExpression, FromSqlRow};
 use serde::{Deserialize, Serialize};
 
+/// A wrapper type for any serde-serializable type to store in diesel database.
 #[derive(Clone, Debug, FromSqlRow, AsExpression)]
 #[diesel(sql_type = diesel::sql_types::Text)]
-/// A wrapper type for any serde-serializable type to store in diesel database.
 pub struct Sqlizer<T>(T, String);
 
 impl<T: Serialize + Debug> Sqlizer<T> {

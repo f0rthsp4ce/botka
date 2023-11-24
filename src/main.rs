@@ -60,8 +60,8 @@ fn version() -> &'static str {
     VERSION.get().expect("VERSION is not set")
 }
 
-#[derive(FromArgs, PartialEq, Debug)]
 /// botka
+#[derive(FromArgs, PartialEq, Debug)]
 struct Args {
     #[argh(option, hidden_help = true, long = "-set-revision")]
     set_revision: Option<String>,
@@ -77,29 +77,29 @@ enum SubCommand {
     Scrape(SubCommandScrape),
 }
 
-#[derive(FromArgs, PartialEq, Debug)]
 /// run the bot
+#[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "bot")]
 struct SubCommandBot {
-    #[argh(positional)]
     /// config file
+    #[argh(positional)]
     config_file: OsString,
 }
 
-#[derive(FromArgs, PartialEq, Debug)]
 /// scrape the log
+#[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "scrape")]
 struct SubCommandScrape {
-    #[argh(positional)]
     /// db file
+    #[argh(positional)]
     db_file: String,
 
-    #[argh(positional)]
     /// log file
+    #[argh(positional)]
     log_file: OsString,
 
-    #[argh(positional)]
     /// list of residential_chats
+    #[argh(positional)]
     residential_chats: Vec<i64>,
 }
 
