@@ -62,7 +62,7 @@ async fn start<'a>(
         Commands::Help => cmd_help(bot, msg).await?,
         Commands::Residents => cmd_list_residents(bot, env, msg).await?,
         Commands::ResidentsTimeline => {
-            cmd_show_residents_timeline(bot, env, msg).await?;
+            cmd_show_residents_timeline(bot, msg).await?;
         }
         Commands::Status => cmd_status(bot, env, msg).await?,
         Commands::Version => {
@@ -152,16 +152,10 @@ async fn cmd_list_residents<'a>(
     Ok(())
 }
 
-async fn cmd_show_residents_timeline(
-    bot: Bot,
-    env: Arc<BotEnv>,
-    msg: Message,
-) -> Result<()> {
-    let db = env.config.db.as_str();
-    let db = db.strip_prefix("sqlite://").unwrap_or(db);
+async fn cmd_show_residents_timeline(bot: Bot, msg: Message) -> Result<()> {
     let svg = Command::new("f0-residents-timeline")
         .arg("-sqlite")
-        .arg(db)
+        .arg(crate::DB_FILENAME)
         .output()?;
     if !svg.status.success() || !svg.stdout.starts_with(b"<svg") {
         bot.reply_message(&msg, "Failed to generate timeline (svg).").await?;

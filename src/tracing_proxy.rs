@@ -30,7 +30,7 @@ struct GetUpdatesResponse {
 /// Start a proxy server that forwards requests to the Telegram API and logs
 /// getUpdates responses, as well as all other requests and responses.
 /// Returns the URL of the proxy server.
-pub async fn start(log_file: &str) -> Result<reqwest::Url> {
+pub async fn start() -> Result<reqwest::Url> {
     // Make client from teloxide::net::default_reqwest_settings, plus 3 seconds.
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5 + 3))
@@ -39,7 +39,10 @@ pub async fn start(log_file: &str) -> Result<reqwest::Url> {
         .build()?;
 
     let log_file = Mutex::new(
-        OpenOptions::new().create(true).append(true).open(log_file)?,
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(crate::TRACE_FILENAME)?,
     );
 
     let proxy = Arc::new(Proxy { client, log_file });

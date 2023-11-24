@@ -35,12 +35,6 @@ telegram:
     # Chat to push Wiki.js update notifications.
     wikijs_updates: { chat: -1001234567890, thread: 123 }
 
-# Database connection string. Only SQLite is supported.
-db: sqlite://path/to/db.sqlite
-
-# Path to the log file where updates will be written. For debug purposes.
-log_file: path/to/updates.jsonl
-
 # Address to to provide HTTP API on.
 server_addr: 127.0.0.1:8080
 

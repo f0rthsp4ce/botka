@@ -26,7 +26,7 @@ To build the project:
 ## Running the Bot Locally
 
 1. Use [@BotFather](https://t.me/BotFather) to create a new Telegram bot, create a test chat with topics, and add the bot as an administrator.
-2. Copy [`config.example.yaml`](./config.example.yaml) and adjust it as needed, particularly the `telegram.token`, `db`, and `log_file` fields.
+2. Copy [`config.example.yaml`](./config.example.yaml) and adjust it as needed, particularly the `telegram.token`.
 3. Start the bot with `cargo run bot my-config.yaml`.
 
 ## Development Conventions

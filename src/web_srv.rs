@@ -106,10 +106,7 @@ async fn get_index() -> Text<String> {
 #[endpoint()]
 async fn get_metrics() -> String {
     let state = state();
-    crate::metrics::refresh(
-        &mut state.conn.lock().unwrap(),
-        state.config.as_ref(),
-    );
+    crate::metrics::refresh(&mut state.conn.lock().unwrap());
     state.prometheus.render()
 }
 

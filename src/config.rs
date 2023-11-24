@@ -18,8 +18,6 @@ use crate::utils::ThreadIdPair;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub telegram: Telegram,
-    pub db: String,
-    pub log_file: String,
     pub server_addr: SocketAddr,
     pub services: Services,
 }

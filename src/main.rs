@@ -56,6 +56,9 @@ mod web_srv;
 
 static VERSION: OnceLock<String> = OnceLock::new();
 
+static DB_FILENAME: &str = "db.sqlite3";
+static TRACE_FILENAME: &str = "trace.jsonl";
+
 fn version() -> &'static str {
     VERSION.get().expect("VERSION is not set")
 }
@@ -137,7 +140,9 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     }
 
     let bot_env = Arc::new(common::BotEnv {
-        conn: Mutex::new(SqliteConnection::establish(&config.db)?),
+        conn: Mutex::new(SqliteConnection::establish(&format!(
+            "sqlite://{DB_FILENAME}"
+        ))?),
         reqwest_client: reqwest::ClientBuilder::new()
             .danger_accept_invalid_certs(true)
             .build()?,
@@ -148,8 +153,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         config: Arc::new(config),
     });
 
-    let proxy_addr =
-        tracing_proxy::start(bot_env.config.log_file.as_str()).await?;
+    let proxy_addr = tracing_proxy::start().await?;
     let bot = Bot::new(&bot_env.config.telegram.token).set_api_url(proxy_addr);
 
     let mut dispatcher = Dispatcher::builder(
@@ -210,7 +214,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     }
 
     join_handles.push(tokio::spawn(web_srv::run(
-        SqliteConnection::establish(&bot_env.config.db)?,
+        SqliteConnection::establish(&format!("sqlite://{DB_FILENAME}"))?,
         Arc::clone(&bot_env.config),
         prometheus,
         cancel.clone(),
