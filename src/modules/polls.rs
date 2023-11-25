@@ -12,7 +12,7 @@ use teloxide::dispatching::UpdateFilterExt;
 use teloxide::prelude::*;
 use teloxide::types::{
     Forward, ForwardedFrom, InlineKeyboardButton, InlineKeyboardMarkup, Me,
-    MediaKind, MessageCommon, MessageKind, ReplyMarkup, User,
+    ReplyMarkup, User,
 };
 
 use crate::common::{
@@ -36,19 +36,13 @@ pub fn callback_handler() -> UpdateHandler {
 
 #[derive(Debug, Clone)]
 enum PollKind {
-    New(Poll),
+    New { poll: Box<Poll>, creator: User },
     Forward(String),
 }
 
 fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
-    let poll = match &msg.kind {
-        MessageKind::Common(MessageCommon {
-            media_kind: MediaKind::Poll(poll),
-            ..
-        }) => &poll.poll,
-        _ => return None,
-    };
-
+    let poll = msg.poll()?;
+    let from = msg.from.as_ref()?;
     match msg.forward() {
         #[allow(clippy::nonminimal_bool)]
         None if true
@@ -61,15 +55,18 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
                 // Bots can't obtain information from quiz polls, so skip them
                 && poll.poll_type == teloxide::types::PollType::Regular
                 // Allow only residents
-                && is_resident(&mut env.conn(), msg.from.as_ref()?) =>
+                && is_resident(&mut env.conn(), from) =>
         {
-            Some(PollKind::New(poll.clone()))
+            Some(PollKind::New {
+                poll: Box::new(poll.clone()),
+                creator: from.clone(),
+            })
         }
         Some(Forward {
             from: ForwardedFrom::User(User { id, .. }), ..
         }) if id == &me.user.id
             && msg.chat.is_private()
-            && is_resident(&mut env.conn(), msg.from.as_ref()?) =>
+            && is_resident(&mut env.conn(), from) =>
         {
             Some(PollKind::Forward(poll.id.clone()))
         }
@@ -84,7 +81,9 @@ async fn handle_message(
     kind: PollKind,
 ) -> Result<()> {
     match kind {
-        PollKind::New(poll) => intercept_new_poll(bot, msg, poll, env).await,
+        PollKind::New { poll, creator } => {
+            intercept_new_poll(bot, msg, &poll, creator, env).await
+        }
         PollKind::Forward(poll_id) => {
             hande_poll_forward(bot, msg, &poll_id, env).await
         }
@@ -94,13 +93,14 @@ async fn handle_message(
 async fn intercept_new_poll(
     bot: Bot,
     msg: Message,
-    poll: Poll,
+    poll: &Poll,
+    creator: User,
     env: Arc<BotEnv>,
 ) -> Result<()> {
     let mut new_poll = bot
         .send_poll(
             msg.chat.id,
-            poll.question,
+            &poll.question,
             poll.options.iter().map(|o| o.text.clone()),
         )
         .is_anonymous(poll.is_anonymous)
@@ -110,58 +110,45 @@ async fn intercept_new_poll(
     new_poll.reply_to_message_id = msg.reply_to_message().map(|m| m.id);
     let new_poll = new_poll.await?;
 
-    #[allow(clippy::single_match_else)]
-    let poll_id = match new_poll.kind {
-        MessageKind::Common(MessageCommon {
-            media_kind: MediaKind::Poll(poll),
-            ..
-        }) => poll.poll.id,
-        _ => {
-            // TODO: return error
-            log::error!("Expected poll, got {new_poll:?}");
-            bot.delete_message(msg.chat.id, msg.id)
-                .await
-                .log_error("delete message");
-            return Ok(());
-        }
+    let Some(new_poll_id) = new_poll.poll().map(|p| &p.id) else {
+        bot.delete_message(msg.chat.id, msg.id)
+            .await
+            .log_error("delete message");
+        anyhow::bail!("Expected poll, got {new_poll:?}");
     };
 
     if let Err(e) = bot.delete_message(msg.chat.id, msg.id).await {
         // TODO: check rights before sending message
-        log::warn!("Failed to delete poll message: {e}");
         bot.delete_message(msg.chat.id, new_poll.id)
             .await
             .log_error("delete message");
-        return Ok(());
+        anyhow::bail!("Failed to delete poll message: {e}");
     }
 
     let non_voters = db_find_non_voters(&mut env.conn(), &[]);
 
-    // TODO: clean up this
-    let from = msg.from.as_ref().unwrap();
-    let creator_id = from.id.into();
     let creator_info = models::TgUser {
-        id: creator_id,
-        username: from.username.clone(),
-        first_name: from.first_name.clone(),
-        last_name: from.last_name.clone(),
+        id: creator.id.into(),
+        username: creator.username.clone(),
+        first_name: creator.first_name.clone(),
+        last_name: creator.last_name.clone(),
     };
 
     let poll_info = bot
         .reply_message(
             &msg,
-            poll_text((creator_id, Some(creator_info)), &non_voters?, 0),
+            poll_text((creator.id.into(), Some(creator_info)), &non_voters?, 0),
         )
         .reply_to_message_id(new_poll.id)
         .parse_mode(teloxide::types::ParseMode::Html)
-        .reply_markup(ReplyMarkup::InlineKeyboard(make_keyboard(&poll_id)))
+        .reply_markup(ReplyMarkup::InlineKeyboard(make_keyboard(&poll.id)))
         .disable_web_page_preview(true)
         .await?;
 
     diesel::insert_into(schema::tracked_polls::table)
         .values(&models::TrackedPoll {
-            tg_poll_id: poll_id,
-            creator_id,
+            tg_poll_id: new_poll_id.clone(),
+            creator_id: creator.id.into(),
             info_chat_id: poll_info.chat.id.into(),
             info_message_id: poll_info.id.into(),
             voted_users: Sqlizer::new(Vec::new()).unwrap(),
