@@ -197,6 +197,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     )
     .dependencies(dptree::deps![
         InMemStorage::<State>::new(),
+        modules::forward_topic_pins::state(),
         Arc::clone(&bot_env)
     ])
     .build();

@@ -4,14 +4,17 @@
 //!
 //! [`telegram.chats.forward_pins`]: crate::config::TelegramChats::forward_pins
 
+use std::collections::HashSet;
 use std::iter::once;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use diesel::prelude::*;
 use reqwest::Url;
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, ReplyMarkup};
+use teloxide::types::{
+    InlineKeyboardButton, MessageKind, ReplyMarkup, ThreadId,
+};
 use teloxide::utils::html;
 
 use crate::common::{BotEnv, TopicEmojis};
@@ -19,20 +22,47 @@ use crate::db::{DbChatId, DbThreadId};
 use crate::models;
 use crate::utils::{format_to, ChatIdExt as _, MessageExt as _, UserExt as _};
 
+/// State contains a set of newly created topics.
+#[derive(Clone, Debug, Default)]
+pub struct State(HashSet<(ChatId, ThreadId)>);
+
+pub fn state() -> Arc<Mutex<State>> {
+    Arc::new(Mutex::new(State::default()))
+}
+
 pub async fn inspect_message<'a>(
     bot: Bot,
     env: Arc<BotEnv>,
-    pin: Message,
+    state: Arc<Mutex<State>>,
+    msg: Message,
 ) -> Result<()> {
-    let Some(msg) = pin.pinned_message() else { return Ok(()) };
+    if let (MessageKind::ForumTopicCreated(_), Some(thread_id)) =
+        (&msg.kind, msg.thread_id)
+    {
+        let mut state = state.lock().unwrap();
+        state.0.insert((msg.chat.id, thread_id));
+    } else if let (Some(reply), Some(thread_id)) =
+        (msg.reply_to_message(), msg.thread_id)
+    {
+        if state.lock().unwrap().0.remove(&(reply.chat.id, thread_id)) {
+            // This is the first message in newly created topic. It is pinned
+            // implicitly.
+            forward_message(&bot, &env, &msg).await?;
+        }
+    } else if let Some(pin) = msg.pinned_message() {
+        forward_message(&bot, &env, pin).await?;
+    }
+    Ok(())
+}
 
+async fn forward_message(bot: &Bot, env: &BotEnv, msg: &Message) -> Result<()> {
     let forward_to = env.config.telegram.chats.forward_pins.iter().find(|f| {
         f.from == msg.chat.id
             && msg.thread_id.map_or(true, |t| !f.ignore_threads.contains(&t))
     });
     let Some(forward_to) = forward_to else { return Ok(()) };
 
-    let (link_url, topic_name) = make_message_link(&bot, &env, msg).await?;
+    let (link_url, topic_name) = make_message_link(bot, env, msg).await?;
 
     if let Some(poll) = msg.poll().filter(|p| !p.is_anonymous) {
         // Polls with visible voters can't be forwarded to channels.
