@@ -12,14 +12,14 @@ use teloxide::dispatching::UpdateFilterExt;
 use teloxide::prelude::*;
 use teloxide::types::{
     Forward, ForwardedFrom, InlineKeyboardButton, InlineKeyboardMarkup, Me,
-    ReplyMarkup, User,
+    MessageId, PollType, ReplyMarkup, User,
 };
 
 use crate::common::{
     format_user, format_users, is_resident, BotEnv, UpdateHandler,
 };
 use crate::db::DbUserId;
-use crate::utils::{BotExt, ResultExt, Sqlizer};
+use crate::utils::{format_to, BotExt, ResultExt, Sqlizer};
 use crate::{models, schema};
 
 pub fn message_handler() -> UpdateHandler {
@@ -37,6 +37,7 @@ pub fn callback_handler() -> UpdateHandler {
 #[derive(Debug, Clone)]
 enum PollKind {
     New { poll: Box<Poll>, creator: User },
+    FailedDiag(ChatId, MessageId, String),
     Forward(String),
 }
 
@@ -45,21 +46,13 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
     let from = msg.from.as_ref()?;
     match msg.forward() {
         #[allow(clippy::nonminimal_bool)]
-        None if true
-                && poll.question.starts_with('!')
-                // Do not touch polls that already have votes or closed
-                && poll.total_voter_count == 0
-                && !poll.is_closed
-                // We don't need to track anonymous polls
-                && !poll.is_anonymous
-                // Bots can't obtain information from quiz polls, so skip them
-                && poll.poll_type == teloxide::types::PollType::Regular
-                // Allow only residents
-                && is_resident(&mut env.conn(), from) =>
-        {
-            Some(PollKind::New {
-                poll: Box::new(poll.clone()),
-                creator: from.clone(),
+        None if poll.question.starts_with('!') => {
+            Some(match check_new_poll_requirements(&env, from, poll) {
+                Ok(()) => PollKind::New {
+                    poll: Box::new(poll.clone()),
+                    creator: from.clone(),
+                },
+                Err(text) => PollKind::FailedDiag(msg.chat.id, msg.id, text),
             })
         }
         Some(Forward {
@@ -74,6 +67,27 @@ fn filter_polls(me: Me, env: Arc<BotEnv>, msg: Message) -> Option<PollKind> {
     }
 }
 
+fn check_new_poll_requirements(
+    env: &BotEnv,
+    from: &User,
+    poll: &Poll,
+) -> Result<(), String> {
+    let mut diag_ok = true;
+    let mut diag_text = String::new();
+    let mut check = |ok, text| {
+        diag_ok &= ok;
+        format_to!(diag_text, "{} {}\n", if ok { "✅" } else { "❌" }, text);
+    };
+    check(poll.total_voter_count == 0, "no votes (aka new poll)");
+    check(!poll.is_closed, "not closed already");
+    check(!poll.is_anonymous, "not anonymous");
+    // Bots can't obtain information from quiz polls, so we can't track them
+    // properly.
+    check(poll.poll_type == PollType::Regular, "regular poll, not quiz");
+    check(is_resident(&mut env.conn(), from), "created by resident");
+    diag_ok.then_some(()).ok_or(diag_text)
+}
+
 async fn handle_message(
     bot: Bot,
     msg: Message,
@@ -83,6 +97,18 @@ async fn handle_message(
     match kind {
         PollKind::New { poll, creator } => {
             intercept_new_poll(bot, msg, &poll, creator, env).await
+        }
+        PollKind::FailedDiag(chat_id, msg_id, diag_text) => {
+            bot.send_message(
+                chat_id,
+                format!(
+                    "It seems you tried to create a bot-tracked poll, \
+                    but it doesn't meet all of the requirements:\n{diag_text}",
+                ),
+            )
+            .reply_to_message_id(msg_id)
+            .await?;
+            Ok(())
         }
         PollKind::Forward(poll_id) => {
             hande_poll_forward(bot, msg, &poll_id, env).await
