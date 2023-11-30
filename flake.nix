@@ -16,6 +16,7 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems =
         [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
+      # deadnix: skip (let's keep self', inputs')
       perSystem = { config, self', inputs', pkgs, system, ... }:
         let
           # Need nightly rust for unstable rustfmt features
@@ -34,7 +35,7 @@
           allRuntimeDeps = baseRuntimeDeps
             ++ [ residents-admin-table residents-timeline ];
           buildDeps = [ pkgs.openssl pkgs.perl pkgs.pkg-config pkgs.sqlite ];
-          pythonDeps = (pkgs.python3.withPackages (p: [ p.pyyaml p.telethon ]));
+          pythonDeps = pkgs.python3.withPackages (p: [ p.pyyaml p.telethon ]);
           residents-admin-table = pkgs.stdenv.mkDerivation {
             name = "f0-residents-admin-table";
             src = ./residents-admin-table.py;
@@ -104,15 +105,19 @@
                 postgresqlSupport = false;
                 mysqlSupport = false;
               })
-              pkgs.black
               pkgs.bun
-              pkgs.isort
               pkgs.just
               pkgs.mold
-              pkgs.nixfmt
-              pkgs.nodePackages.prettier
               pkgs.nodejs
               pkgs.prefetch-npm-deps
+
+              # Linters and formatters (see Justfile)
+              pkgs.black
+              pkgs.deadnix
+              pkgs.isort
+              pkgs.nixfmt
+              pkgs.nodePackages.prettier
+              pkgs.statix
             ] ++ buildDeps ++ baseRuntimeDeps;
             PRETTIER_PLUGINS =
               "--plugin ${pkgs.nodePackages.prettier-plugin-toml}/lib/node_modules/prettier-plugin-toml/lib/api.js";

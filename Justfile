@@ -9,12 +9,15 @@ fmt:
 	black *.py
 	prettier $PRETTIER_PLUGINS -w \
 		Cargo.toml diesel.toml rustfmt.toml \
+		README.md \
 		config.example.yaml \
 		residents-timeline/{index.ts,package.json,tsconfig.json} \
 		;
 
 # Run lints and tests
 check:
+	deadnix --fail .
+	statix check .
 	cargo clippy --all-targets -- --deny warnings --cfg clippy
 	cargo test
 
