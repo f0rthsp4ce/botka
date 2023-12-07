@@ -17,6 +17,7 @@ fmt:
 check:
 	deadnix --fail .
 	statix check .
+	mypy .
 	ruff check .
 	cargo clippy --all-targets -- --deny warnings --cfg clippy
 	cargo test

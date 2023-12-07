@@ -35,7 +35,13 @@
           allRuntimeDeps = baseRuntimeDeps
             ++ [ residents-admin-table residents-timeline ];
           buildDeps = [ pkgs.openssl pkgs.perl pkgs.pkg-config pkgs.sqlite ];
-          pythonDeps = pkgs.python3.withPackages (p: [ p.pyyaml p.telethon ]);
+          pythonDeps = pkgs.python3.withPackages (p: [
+            p.pyyaml
+            p.telethon
+            # TODO: split into dev and runtime deps
+            p.mypy
+            p.types-pyyaml
+          ]);
           residents-admin-table = pkgs.stdenv.mkDerivation {
             name = "f0-residents-admin-table";
             src = ./residents-admin-table.py;
