@@ -7,11 +7,11 @@ import sqlite3
 import sys
 import typing
 
+import telethon
 import telethon.hints
 import telethon.tl.functions.channels
 import telethon.tl.types
 import yaml
-from telethon import TelegramClient
 
 API_ID = 27161938
 API_HASH = "25540bdf9a27dc0da066770a1d5b12c5"
@@ -25,11 +25,13 @@ class WatchingChat(typing.TypedDict):
 
 
 async def main() -> None:
-    config = yaml.safe_load(open(sys.argv[1]))
+    with open(sys.argv[1]) as f:  # noqa: ASYNC101
+        config = yaml.safe_load(f)
+
     db = sqlite3.connect(f"file:{DB_FILENAME}?mode=ro", uri=True)
-    client = await TelegramClient(SESSION_NAME, API_ID, API_HASH).start(
-        bot_token=config["telegram"]["token"]
-    )
+    client = await telethon.TelegramClient(
+        SESSION_NAME, API_ID, API_HASH
+    ).start(bot_token=config["telegram"]["token"])
     watching_chats = config["telegram"]["chats"]["resident_owned"]
 
     async with client:
@@ -45,13 +47,13 @@ class ResidentsChatsTable(typing.NamedTuple):
 class ResidentsChatsTableRow(typing.NamedTuple):
     user: telethon.tl.types.User | int
     is_resident: bool
-    chats: list[typing.Optional[telethon.tl.types.ChatParticipant]]
+    chats: list[telethon.tl.types.ChatParticipant | None]
 
 
 async def fetch_residents_chats_table(
     db: sqlite3.Connection,
     watching_chats: list[WatchingChat],
-    client: TelegramClient,
+    client: telethon.TelegramClient,
 ) -> ResidentsChatsTable:
     result = ResidentsChatsTable([], [])
     resident_ids = db_load_residents(db)
@@ -61,18 +63,20 @@ async def fetch_residents_chats_table(
     users = dict[int, telethon.tl.types.User]()
 
     await asyncio.gather(
-        *map(
-            lambda ch: fetch_chat(client, residents, entities, users, ch),
-            watching_chats,
+        *(
+            fetch_chat(client, residents, entities, users, ch)
+            for ch in watching_chats
         )
     )
 
     for resident in resident_ids:
         result.rows.append(
             ResidentsChatsTableRow(
-                users.get(resident, resident),
-                True,
-                [residents.get((ch["id"], resident)) for ch in watching_chats],
+                user=users.get(resident, resident),
+                is_resident=True,
+                chats=[
+                    residents.get((ch["id"], resident)) for ch in watching_chats
+                ],
             )
         )
 
@@ -81,19 +85,23 @@ async def fetch_residents_chats_table(
             continue
         result.rows.append(
             ResidentsChatsTableRow(
-                user,
-                False,
-                [residents.get((ch["id"], user.id)) for ch in watching_chats],
+                user=user,
+                is_resident=False,
+                chats=[
+                    residents.get((ch["id"], user.id)) for ch in watching_chats
+                ],
             )
         )
 
-    result.chats.extend((entities[ch["id"]], ch["internal"]) for ch in watching_chats)
+    result.chats.extend(
+        (entities[ch["id"]], ch["internal"]) for ch in watching_chats
+    )
 
     return result
 
 
 async def fetch_chat(
-    client: TelegramClient,
+    client: telethon.TelegramClient,
     residents: dict[tuple[int, int], telethon.tl.types.ChatParticipant],
     entities: dict[int, telethon.tl.types.Chat | telethon.tl.types.Channel],
     users: dict[int, telethon.tl.types.User],
@@ -101,7 +109,8 @@ async def fetch_chat(
 ) -> None:
     chat = await client.get_entity(ch["id"])
     if isinstance(chat, telethon.tl.types.User):
-        raise ValueError("User is not supported")
+        msg = "User is not supported"
+        raise TypeError(msg)
     entities[ch["id"]] = chat
     async for participant in client.iter_participants(
         chat,
@@ -113,7 +122,7 @@ async def fetch_chat(
         users[participant.id] = participant
 
 
-def print_results(result: ResidentsChatsTable) -> None:
+def print_results(result: ResidentsChatsTable) -> None:  # noqa: C901 PLR0912
     for n in range(len(result.chats)):
         print(end=f"{n}\ufe0f\u20e3")
     print(" <b>Residents</b>")
@@ -123,16 +132,19 @@ def print_results(result: ResidentsChatsTable) -> None:
     for resident in result.rows:
         if not resident.is_resident and not title_non_residents:
             print()
-            for n in range(len(result.chats)):
-                print(end=f"〰️")
+            print(end="〰️" * len(result.chats))
             print(" <b>Non-residents</b>")
             title_non_residents = True
         for participant in resident.chats:
             if participant is None:
                 print(end="➖")
-            elif isinstance(participant, telethon.tl.types.ChannelParticipantCreator):
+            elif isinstance(
+                participant, telethon.tl.types.ChannelParticipantCreator
+            ):
                 print(end="👑")
-            elif isinstance(participant, telethon.tl.types.ChannelParticipantAdmin):
+            elif isinstance(
+                participant, telethon.tl.types.ChannelParticipantAdmin
+            ):
                 print(end="⭐")
             elif isinstance(participant, telethon.tl.types.ChannelParticipant):
                 print(end="👤")
@@ -148,7 +160,7 @@ def print_results(result: ResidentsChatsTable) -> None:
             if resident.user.last_name:
                 print(end=" " + escape_html(resident.user.last_name))
             if resident.user.username:
-                print(end=f"</a>")
+                print(end="</a>")
             if resident.user.bot:
                 print(end=" ⚙️")
         print()
@@ -179,7 +191,7 @@ def db_load_residents(db: sqlite3.Connection) -> list[int]:
         for row in db.execute(
             r"""
                   SELECT tg_id
-                    FROM residents 
+                    FROM residents
                    WHERE end_date IS NULL
                 ORDER BY begin_date DESC
             """

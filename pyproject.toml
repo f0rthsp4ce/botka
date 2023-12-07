@@ -1,0 +1,26 @@
+[tool.ruff]
+select = ["ALL"]
+ignore = [
+  "D10", # pydocstyle:undocumented-*
+  "D203", # pydocstyle:one-blank-line-before-class, conflicts with D211
+  "D213", # pydocstyle:multi-line-summary-second-line, conflicts with D212
+  "T201", # flake8-print:print
+  "PTH123", # flake8-use-pathlib:builtin-open
+  # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+  "COM812",
+  "COM819",
+  "D206",
+  "D300",
+  "E111",
+  "E114",
+  "E117",
+  "ISC001",
+  "ISC002",
+  "Q000",
+  "Q001",
+  "Q002",
+  "Q003",
+  "W191",
+]
+allowed-confusables = ["➖"]
+line-length = 80

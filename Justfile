@@ -5,10 +5,9 @@ default:
 fmt:
 	cargo fmt
 	nixfmt flake.nix
-	isort *.py
-	black *.py
+	ruff format .
 	prettier $PRETTIER_PLUGINS -w \
-		Cargo.toml diesel.toml rustfmt.toml \
+		Cargo.toml diesel.toml pyproject.toml rustfmt.toml \
 		README.md \
 		config.example.yaml \
 		residents-timeline/{index.ts,package.json,tsconfig.json} \
@@ -18,6 +17,7 @@ fmt:
 check:
 	deadnix --fail .
 	statix check .
+	ruff check .
 	cargo clippy --all-targets -- --deny warnings --cfg clippy
 	cargo test
 

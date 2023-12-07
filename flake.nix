@@ -112,11 +112,10 @@
               pkgs.prefetch-npm-deps
 
               # Linters and formatters (see Justfile)
-              pkgs.black
               pkgs.deadnix
-              pkgs.isort
               pkgs.nixfmt
               pkgs.nodePackages.prettier
+              pkgs.ruff
               pkgs.statix
             ] ++ buildDeps ++ baseRuntimeDeps;
             PRETTIER_PLUGINS =
