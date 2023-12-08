@@ -221,7 +221,7 @@ impl<'a> ScrapedInfo<'a> {
         self.scrape_chat(&cmu.chat);
         self.user_in_chat = Some(models::NewTgUserInChat {
             chat_id: cmu.chat.id.into(),
-            user_id: cmu.from.id.into(),
+            user_id: cmu.new_chat_member.user.id.into(),
             chat_member: Some(
                 Sqlizer::new(cmu.new_chat_member.clone())
                     .expect("Sqlizer ChatMember failed"),
