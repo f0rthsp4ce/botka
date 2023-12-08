@@ -50,6 +50,10 @@ fn filter<'a>(
 ) -> Option<Filtered<'a>> {
     let UpdateKind::ChatMember(ref cm) = upd.kind else { return None };
 
+    if cm.new_chat_member.user.is_bot {
+        return None;
+    }
+
     let is_joined = match (
         cm.old_chat_member.kind.is_present(),
         cm.new_chat_member.kind.is_present(),
