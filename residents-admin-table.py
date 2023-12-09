@@ -19,6 +19,12 @@ DB_FILENAME = "db.sqlite3"
 SESSION_NAME = "session"
 
 
+TypeParticipant: typing.TypeAlias = (
+    telethon.tl.types.TypeChannelParticipant
+    | telethon.tl.types.TypeChatParticipant
+)
+
+
 class WatchingChat(typing.TypedDict):
     id: int
     internal: bool
@@ -47,7 +53,7 @@ class ResidentsChatsTable(typing.NamedTuple):
 class ResidentsChatsTableRow(typing.NamedTuple):
     user: telethon.tl.types.User | int
     is_resident: bool
-    chats: list[telethon.tl.types.ChatParticipant | None]
+    chats: list[TypeParticipant | None]
 
 
 async def fetch_residents_chats_table(
@@ -58,7 +64,7 @@ async def fetch_residents_chats_table(
     result = ResidentsChatsTable([], [])
     resident_ids = db_load_residents(db)
 
-    residents = dict[tuple[int, int], telethon.tl.types.ChatParticipant]()
+    residents = dict[tuple[int, int], TypeParticipant]()
     entities = dict[int, telethon.tl.types.Chat | telethon.tl.types.Channel]()
     users = dict[int, telethon.tl.types.User]()
 
@@ -66,7 +72,7 @@ async def fetch_residents_chats_table(
         *(
             fetch_chat(client, residents, entities, users, ch)
             for ch in watching_chats
-        )
+        ),
     )
 
     for resident in resident_ids:
@@ -102,7 +108,7 @@ async def fetch_residents_chats_table(
 
 async def fetch_chat(
     client: telethon.TelegramClient,
-    residents: dict[tuple[int, int], telethon.tl.types.ChatParticipant],
+    residents: dict[tuple[int, int], TypeParticipant],
     entities: dict[int, telethon.tl.types.Chat | telethon.tl.types.Channel],
     users: dict[int, telethon.tl.types.User],
     ch: WatchingChat,
@@ -196,16 +202,18 @@ def format_row(items: list[str]) -> str:
     return "".join(items[0:middle]) + "  " + "".join(items[middle:])
 
 
-def format_participant(p: telethon.tl.types.ChatParticipant | None) -> str:
-    if p is None:
-        return "➖"
-    if isinstance(p, telethon.tl.types.ChannelParticipantCreator):
-        return "👑"
-    if isinstance(p, telethon.tl.types.ChannelParticipantAdmin):
-        return "⭐"
-    if isinstance(p, telethon.tl.types.ChannelParticipant):
-        return "👤"
-    return "❓"
+t = telethon.tl.types
+PARTICIPANT_TYPES = [
+    (None | t.ChannelParticipantBanned | t.ChannelParticipantLeft, "➖"),
+    (t.ChannelParticipant | t.ChatParticipant | t.ChatParticipant, "👤"),
+    (t.ChannelParticipantCreator | t.ChatParticipantCreator, "👑"),
+    (t.ChannelParticipantAdmin | t.ChatParticipantAdmin, "⭐"),
+    (t.ChannelParticipantSelf, "❓"),
+]
+
+
+def format_participant(p: TypeParticipant | None) -> str:
+    return next((s for t, s in PARTICIPANT_TYPES if isinstance(p, t)), "❓")
 
 
 def escape_html(s: str) -> str:
