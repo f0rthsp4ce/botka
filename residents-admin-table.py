@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 import sys
+import traceback
 import typing
 
 import telethon
@@ -41,132 +42,98 @@ async def main() -> None:
     watching_chats = config["telegram"]["chats"]["resident_owned"]
 
     async with client:
-        res = await fetch_residents_chats_table(db, watching_chats, client)
-        print_results(res)
+        res = await fetch_residents_chats_table(client, watching_chats)
+        print_results(res, db_load_residents(db))
 
 
 class ResidentsChatsTable(typing.NamedTuple):
-    chats: list[tuple[telethon.tl.types.Chat | telethon.tl.types.Channel, bool]]
-    rows: list[ResidentsChatsTableRow]
+    chats: list[FetchChatResult]
+    users: dict[int, telethon.tl.types.User]
+    errors: list[int]
 
 
-class ResidentsChatsTableRow(typing.NamedTuple):
-    user: telethon.tl.types.User | int
-    is_resident: bool
-    chats: list[TypeParticipant | None]
+class FetchChatResult(typing.NamedTuple):
+    chat: telethon.tl.types.Chat | telethon.tl.types.Channel
+    is_internal: bool
+    participants: dict[int, tuple[telethon.tl.types.User, TypeParticipant]]
 
 
 async def fetch_residents_chats_table(
-    db: sqlite3.Connection,
-    watching_chats: list[WatchingChat],
     client: telethon.TelegramClient,
+    watching_chats: list[WatchingChat],
 ) -> ResidentsChatsTable:
-    result = ResidentsChatsTable([], [])
-    resident_ids = db_load_residents(db)
-
-    residents = dict[tuple[int, int], TypeParticipant]()
-    entities = dict[int, telethon.tl.types.Chat | telethon.tl.types.Channel]()
-    users = dict[int, telethon.tl.types.User]()
-
-    await asyncio.gather(
-        *(
-            fetch_chat(client, residents, entities, users, ch)
-            for ch in watching_chats
+    result = ResidentsChatsTable([], {}, [])
+    for wc, ch in zip(
+        watching_chats,
+        await asyncio.gather(
+            *(fetch_chat(client, ch) for ch in watching_chats),
+            return_exceptions=True,
         ),
-    )
-
-    for resident in resident_ids:
-        result.rows.append(
-            ResidentsChatsTableRow(
-                user=users.get(resident, resident),
-                is_resident=True,
-                chats=[
-                    residents.get((ch["id"], resident)) for ch in watching_chats
-                ],
-            )
-        )
-
-    for user in users.values():
-        if user.id in resident_ids:
-            continue
-        result.rows.append(
-            ResidentsChatsTableRow(
-                user=user,
-                is_resident=False,
-                chats=[
-                    residents.get((ch["id"], user.id)) for ch in watching_chats
-                ],
-            )
-        )
-
-    result.chats.extend(
-        (entities[ch["id"]], ch["internal"]) for ch in watching_chats
-    )
-
+    ):
+        if isinstance(ch, FetchChatResult):
+            result.chats.append(ch)
+            for u, _ in ch.participants.values():
+                result.users[u.id] = u
+        else:
+            traceback.print_exception(type(ch), ch, ch.__traceback__)
+            result.errors.append(wc["id"])
     return result
 
 
 async def fetch_chat(
-    client: telethon.TelegramClient,
-    residents: dict[tuple[int, int], TypeParticipant],
-    entities: dict[int, telethon.tl.types.Chat | telethon.tl.types.Channel],
-    users: dict[int, telethon.tl.types.User],
-    ch: WatchingChat,
-) -> None:
+    client: telethon.TelegramClient, ch: WatchingChat
+) -> FetchChatResult:
     chat = await client.get_entity(ch["id"])
     if isinstance(chat, telethon.tl.types.User):
         msg = "User is not supported"
         raise TypeError(msg)
-    entities[ch["id"]] = chat
-    async for participant in client.iter_participants(
+    result = FetchChatResult(chat, ch["internal"], {})
+    async for user in client.iter_participants(
         chat,
         filter=None
         if ch["internal"]
         else telethon.tl.types.ChannelParticipantsAdmins(),
     ):
-        residents[(ch["id"], participant.id)] = participant.participant
-        users[participant.id] = participant
+        result.participants[user.id] = (user, user.participant)
+    return result
 
 
-def print_results(result: ResidentsChatsTable) -> None:  # noqa: C901
-    tables: list[
-        tuple[str, typing.Callable[[ResidentsChatsTableRow], bool]]
-    ] = [
-        ("Residents", lambda r: r.is_resident),
-        ("Bots", lambda r: not isinstance(r.user, int) and r.user.bot is True),
-        ("Non-residents", lambda _: True),
-    ]
+def print_results(  # noqa: C901 PLR0912
+    result: ResidentsChatsTable, resident_ids: list[int]
+) -> None:
+    def key(user_id: int) -> tuple[int, str, int]:
+        if user_id in resident_ids:
+            return (0, "Residents", resident_ids.index(user_id))
+        user = result.users.get(user_id)
+        if user is not None and user.bot is True:
+            return (1, "Bots", user_id)
+        return (2, "Non-residents", user_id)
 
-    table_index: int | None = None
     first = True
-    for row in sorted(
-        result.rows,
-        key=lambda r: next(i for i, (_, f) in enumerate(tables) if f(r)),
-    ):
+    prev_table = None
+    for user_id in sorted(result.users.keys() | set(resident_ids), key=key):
         # Print table header
-        while table_index is None or not tables[table_index][1](row):
-            table_index = table_index + 1 if table_index is not None else 0
+        curr_table = key(user_id)[1]
+        if curr_table != prev_table:
             if not first:
                 print()
             first = False
-            print(
-                end=format_row(
-                    [f"{n}\ufe0f\u20e3" for n in range(len(result.chats))]
-                )
-            )
-            print(f" <b>{tables[table_index][0]}</b>")
+            row = [f"{n}\ufe0f\u20e3" for n in range(len(result.chats))]
+            print(f"{format_row(row)} <b>{curr_table}</b>")
+            prev_table = curr_table
 
-        print(end=format_row([format_participant(p) for p in row.chats]) + " ")
+        row = [format_participant(user_id, ch) for ch in result.chats]
+        print(end=format_row(row) + " ")
 
-        if isinstance(row.user, int):
-            print(end=f"id={row.user}")
+        if (user := result.users.get(user_id)) is None:
+            print(end=f"id={user_id}")
         else:
-            if row.user.username:
-                print(end=f'<a href="https://t.me/{row.user.username}">')
-            print(end=escape_html(row.user.first_name or ""))
-            if row.user.last_name:
-                print(end=" " + escape_html(row.user.last_name))
-            if row.user.username:
+            if user.username:
+                print(end=f'<a href="https://t.me/{user.username}">')
+            print(end=escape_html(user.first_name or ""))
+            if user.last_name:
+                print(end=" " + escape_html(user.last_name))
+            if user.username:
                 print(end="</a>")
         print()
 
@@ -174,7 +141,7 @@ def print_results(result: ResidentsChatsTable) -> None:  # noqa: C901
 
     print("<b>Legend</b>")
 
-    for n, (ch, is_internal) in enumerate(result.chats):
+    for n, ch in enumerate(result.chats):
         print(
             end=format_row(
                 [
@@ -187,14 +154,17 @@ def print_results(result: ResidentsChatsTable) -> None:  # noqa: C901
         if isinstance(ch, telethon.tl.types.Channel) and ch.username:
             print(end=ch.username)
         else:
-            print(end=f"c/{ch.id}")
-        print(end=f'">{escape_html(ch.title)}</a>')
-        if not is_internal:
+            print(end=f"c/{ch.chat.id}")
+        print(end=f'">{escape_html(ch.chat.title)}</a>')
+        if not ch.is_internal:
             print(end=" (public)")
         print()
 
     print("👑 — owner, ⭐ — admin, 👤 — participant/subscriber")
     print("➖ — not present (or not admin for public chats)")
+
+    if result.errors:
+        print(f"\n⚠️ got errors while fetching chats with ids {result.errors}")
 
 
 def format_row(items: list[str]) -> str:
@@ -212,7 +182,9 @@ PARTICIPANT_TYPES = [
 ]
 
 
-def format_participant(p: TypeParticipant | None) -> str:
+def format_participant(user_id: int, ch: FetchChatResult) -> str:
+    p = ch.participants.get(user_id)
+    p = p[1] if p else None
     return next((s for t, s in PARTICIPANT_TYPES if isinstance(p, t)), "❓")
 
 
