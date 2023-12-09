@@ -122,55 +122,62 @@ async def fetch_chat(
         users[participant.id] = participant
 
 
-def print_results(result: ResidentsChatsTable) -> None:  # noqa: C901 PLR0912
-    for n in range(len(result.chats)):
-        print(end=f"{n}\ufe0f\u20e3")
-    print(" <b>Residents</b>")
+def print_results(result: ResidentsChatsTable) -> None:  # noqa: C901
+    tables: list[
+        tuple[str, typing.Callable[[ResidentsChatsTableRow], bool]]
+    ] = [
+        ("Residents", lambda r: r.is_resident),
+        ("Bots", lambda r: not isinstance(r.user, int) and r.user.bot is True),
+        ("Non-residents", lambda _: True),
+    ]
 
-    title_non_residents = False
+    table_index: int | None = None
+    first = True
+    for row in sorted(
+        result.rows,
+        key=lambda r: next(i for i, (_, f) in enumerate(tables) if f(r)),
+    ):
+        # Print table header
+        while table_index is None or not tables[table_index][1](row):
+            table_index = table_index + 1 if table_index is not None else 0
+            if not first:
+                print()
+            first = False
+            print(
+                end=format_row(
+                    [f"{n}\ufe0f\u20e3" for n in range(len(result.chats))]
+                )
+            )
+            print(f" <b>{tables[table_index][0]}</b>")
 
-    for resident in result.rows:
-        if not resident.is_resident and not title_non_residents:
-            print()
-            print(end="〰️" * len(result.chats))
-            print(" <b>Non-residents</b>")
-            title_non_residents = True
-        for participant in resident.chats:
-            if participant is None:
-                print(end="➖")
-            elif isinstance(
-                participant, telethon.tl.types.ChannelParticipantCreator
-            ):
-                print(end="👑")
-            elif isinstance(
-                participant, telethon.tl.types.ChannelParticipantAdmin
-            ):
-                print(end="⭐")
-            elif isinstance(participant, telethon.tl.types.ChannelParticipant):
-                print(end="👤")
-            else:
-                print(end="❓")
-        print(end=" ")
-        if isinstance(resident.user, int):
-            print(end=f"id={resident.user}")
+        print(end=format_row([format_participant(p) for p in row.chats]) + " ")
+
+        if isinstance(row.user, int):
+            print(end=f"id={row.user}")
         else:
-            if resident.user.username:
-                print(end=f'<a href="https://t.me/{resident.user.username}">')
-            print(end=escape_html(resident.user.first_name or ""))
-            if resident.user.last_name:
-                print(end=" " + escape_html(resident.user.last_name))
-            if resident.user.username:
+            if row.user.username:
+                print(end=f'<a href="https://t.me/{row.user.username}">')
+            print(end=escape_html(row.user.first_name or ""))
+            if row.user.last_name:
+                print(end=" " + escape_html(row.user.last_name))
+            if row.user.username:
                 print(end="</a>")
-            if resident.user.bot:
-                print(end=" ⚙️")
         print()
 
     print()
-    print("👑 — owner, ⭐ — admin, 👤 — participant/subscriber")
-    print("➖ — not present (or not admin for public chats)")
+
+    print("<b>Legend</b>")
 
     for n, (ch, is_internal) in enumerate(result.chats):
-        print(end=f'{n}\ufe0f\u20e3 — <a href="https://t.me/')
+        print(
+            end=format_row(
+                [
+                    "〰️" if ni < n else f"{n}\ufe0f\u20e3" if ni == n else ""
+                    for ni in range(len(result.chats))
+                ]
+            ).rstrip()
+        )
+        print(end=' — <a href="https://t.me/')
         if isinstance(ch, telethon.tl.types.Channel) and ch.username:
             print(end=ch.username)
         else:
@@ -179,6 +186,26 @@ def print_results(result: ResidentsChatsTable) -> None:  # noqa: C901 PLR0912
         if not is_internal:
             print(end=" (public)")
         print()
+
+    print("👑 — owner, ⭐ — admin, 👤 — participant/subscriber")
+    print("➖ — not present (or not admin for public chats)")
+
+
+def format_row(items: list[str]) -> str:
+    middle = len(items) // 2
+    return "".join(items[0:middle]) + "  " + "".join(items[middle:])
+
+
+def format_participant(p: telethon.tl.types.ChatParticipant | None) -> str:
+    if p is None:
+        return "➖"
+    if isinstance(p, telethon.tl.types.ChannelParticipantCreator):
+        return "👑"
+    if isinstance(p, telethon.tl.types.ChannelParticipantAdmin):
+        return "⭐"
+    if isinstance(p, telethon.tl.types.ChannelParticipant):
+        return "👤"
+    return "❓"
 
 
 def escape_html(s: str) -> str:
