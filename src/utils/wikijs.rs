@@ -17,7 +17,7 @@ pub async fn get_wikijs_page(
     let client = mk_client(endpoint, token);
     let (locale, path) =
         path.trim_start_matches('/').split_once('/').context("Invalid path")?;
-    let response = make_query::<schema::PageResponse>(
+    let response = make_query::<ResponsePage>(
         &client,
         "query($locale: String!, $path: String!) {\
             pages {\
@@ -37,15 +37,15 @@ struct IntermediateResult {
     authors: Vec<String>,
     actions: Vec<String>,
     current_page_contents: String,
-    last_version_id: Option<schema::VersionId>,
-    prev_version_id: Option<schema::VersionId>,
+    last_version_id: Option<VersionId>,
+    prev_version_id: Option<VersionId>,
     changes: (usize, usize),
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct WikiJsUpdateState {
-    pub last_update: DateTime<Utc>,
-    pub pages: HashMap<schema::PageId, schema::VersionId>,
+    last_update: DateTime<Utc>,
+    pages: HashMap<PageId, VersionId>,
 }
 
 /// Connect to Wiki.js GraphQL API and get summary of recent updates since
@@ -60,17 +60,15 @@ pub async fn get_wikijs_updates(
     let client = mk_client(endpoint, token);
 
     // 1. Get list of recently updated pages
-    let mut recent_pages = make_query::<schema::UpdatesResponse1>(
+    let mut recent_pages = make_query::<ResponseUpdates1>(
         &client,
-        "\
-            {\
-                pages {
-                    list(limit: 10, orderBy: UPDATED, orderByDirection: DESC) {\
-                        id locale path title createdAt updatedAt\
-                    }\
+        "{\
+            pages {\
+                list(limit: 10, orderBy: UPDATED, orderByDirection: DESC) {\
+                    id locale path title updatedAt\
                 }\
             }\
-        ",
+        }",
         None,
     )
     .await?
@@ -121,10 +119,8 @@ pub async fn get_wikijs_updates(
     query.push_str("}");
 
     let mut response2 =
-        make_query::<HashMap<String, schema::UpdatesResponse2>>(
-            &client, &query, None,
-        )
-        .await?;
+        make_query::<HashMap<String, ResponseUpdates2>>(&client, &query, None)
+            .await?;
 
     update_state.last_update = response2
         .values()
@@ -142,8 +138,7 @@ pub async fn get_wikijs_updates(
 
         let last_version_id = page.history.trail.first().map(|x| x.version_id);
 
-        let last_version_id_for_state =
-            last_version_id.unwrap_or(schema::VersionId(0));
+        let last_version_id_for_state = last_version_id.unwrap_or(VersionId(0));
         if update_state.pages.get(&pag.id) == Some(&last_version_id_for_state) {
             continue;
         }
@@ -232,13 +227,9 @@ pub async fn get_wikijs_updates(
 
         if query_last.is_empty() && query_prev.is_empty() {
             // Avoid making empty query.
-            schema::UpdatesResponse3 {
-                last: HashMap::new(),
-                prev: HashMap::new(),
-            }
+            ResponseUpdates3 { last: HashMap::new(), prev: HashMap::new() }
         } else {
-            make_query::<schema::UpdatesResponse3>(&client, &query, None)
-                .await?
+            make_query::<ResponseUpdates3>(&client, &query, None).await?
         }
     };
 
@@ -357,96 +348,69 @@ where
         .ok_or_else(|| anyhow::anyhow!("Failed to get response"))
 }
 
-mod schema {
-    use std::collections::HashMap;
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+struct PageId(u32);
 
-    use chrono::{DateTime, Utc};
-    use serde::{Deserialize, Serialize};
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+struct VersionId(u32);
 
-    #[derive(
-        Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash,
-    )]
-    pub struct PageId(pub u32);
+structstruck::strike! {
+    #[strikethrough[derive(Deserialize, Debug)]]
+    #[strikethrough[serde(rename_all = "camelCase")]]
+    #[strikethrough[allow(non_camel_case_types)]] // for consistency
+    struct ResponsePage {
+        pages: struct ResponsePage_1 {
+            single_by_path: struct ResponsePage_2 {
+                content: String,
+            }
+        }
+    }
+}
 
-    #[derive(
-        Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash,
-    )]
-    pub struct VersionId(pub u32);
+structstruck::strike! {
+    #[strikethrough[derive(Deserialize, Debug)]]
+    #[strikethrough[serde(rename_all = "camelCase")]]
+    struct ResponseUpdates1 {
+        pages: struct ResponseUpdates1_1 {
+            list: Vec<struct ResponseUpdates1_2 {
+                id: PageId,
+                locale: String,
+                path: String,
+                title: String,
+                updated_at: DateTime<Utc>,
+            }>,
+        }
+    }
+}
 
-    #[derive(Deserialize, Debug)]
-    pub struct PageResponse {
-        pub pages: PageResponsePages,
+structstruck::strike! {
+    #[strikethrough[derive(Deserialize, Debug)]]
+    #[strikethrough[serde(rename_all = "camelCase")]]
+    struct ResponseUpdates2 {
+        single: struct ResponseUpdates2_1 {
+            author_name: String,
+            updated_at: DateTime<Utc>,
+            content: String,
+        },
+        history: struct ResponseUpdates2_2 {
+            trail: Vec<struct ResponseUpdates2_3 {
+                version_id: VersionId,
+                version_date: DateTime<Utc>,
+                author_name: String,
+                action_type: String,
+            }>,
+        }
     }
-    #[derive(Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    pub struct PageResponsePages {
-        pub single_by_path: PageResponsePagesPage,
-    }
-    #[derive(Deserialize, Debug)]
-    pub struct PageResponsePagesPage {
-        pub content: String,
-    }
+}
 
-    #[derive(Deserialize, Debug)]
-    pub struct UpdatesResponse1 {
-        pub pages: UpdatesResponse1Pages,
-    }
-    #[derive(Deserialize, Debug)]
-    pub struct UpdatesResponse1Pages {
-        pub list: Vec<UpdatesResponse1Page>,
-    }
-    #[derive(Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    pub struct UpdatesResponse1Page {
-        pub id: PageId,
-        pub locale: String,
-        pub path: String,
-        pub title: String,
-        pub created_at: DateTime<Utc>,
-        pub updated_at: DateTime<Utc>,
-    }
-
-    #[derive(Deserialize, Debug)]
-    pub struct UpdatesResponse2 {
-        pub single: UpdatesResponse2Single,
-        pub history: UpdatesResponse2History,
-    }
-    #[derive(Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    pub struct UpdatesResponse2Single {
-        pub author_name: String,
-        pub updated_at: DateTime<Utc>,
-        pub content: String,
-    }
-    #[derive(Deserialize, Debug)]
-    pub struct UpdatesResponse2History {
-        pub trail: Vec<UpdatesResponse2HistoryTrail>,
-    }
-    #[derive(Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    pub struct UpdatesResponse2HistoryTrail {
-        pub version_id: VersionId,
-        pub version_date: DateTime<Utc>,
-        pub author_name: String,
-        pub action_type: String,
-    }
-
-    #[derive(Deserialize, Debug)]
-    pub struct UpdatesResponse3 {
+structstruck::strike! {
+    #[strikethrough[derive(Deserialize, Debug)]]
+    #[strikethrough[serde(rename_all = "camelCase")]]
+    struct ResponseUpdates3 {
         #[serde(default)]
-        pub last: HashMap<String, UpdatesResponse3PageLast>,
+        last: HashMap<String, struct ResponseUpdates3_1 { action: String }>,
         #[serde(default)]
-        pub prev: HashMap<String, UpdatesResponse3PagePrev>,
-    }
-    #[derive(Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    pub struct UpdatesResponse3PageLast {
-        pub action: String,
-    }
-    #[derive(Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    pub struct UpdatesResponse3PagePrev {
-        pub content: String,
+        prev: HashMap<String, struct ResponseUpdates3_2 { content: String }>,
     }
 }
 
