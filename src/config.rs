@@ -79,6 +79,7 @@ pub struct HomeAssistant {
 pub struct WikiJs {
     pub url: String,
     pub token: String,
+    pub welcome_message_page: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

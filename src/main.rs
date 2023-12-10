@@ -183,6 +183,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::polls::message_handler())
                     .branch(modules::borrowed_items::command_handler())
                     .branch(modules::needs::message_handler())
+                    .branch(modules::welcome::message_handler())
                     .endpoint(drop_endpoint),
             )
             .branch(
@@ -198,6 +199,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     .dependencies(dptree::deps![
         InMemStorage::<State>::new(),
         modules::forward_topic_pins::state(),
+        modules::welcome::state(),
         Arc::clone(&bot_env)
     ])
     .build();

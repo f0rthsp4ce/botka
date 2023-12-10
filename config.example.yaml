@@ -13,7 +13,12 @@ telegram:
   # Configuration for specific chat threads.
   chats:
     # List of chats considered as residents-only.
-    residential: [1234567890]
+    # User residency status status is added/revoked by joining/leaving these
+    # chats by 'resident_tracker' module.
+    # The welcome message is sent when joining the first chat in this list.
+    residential:
+      - -1001234567890
+      - -1001234567890
 
     # List of threads for 'borrowed_items' module.
     borrowed_items:
@@ -63,6 +68,8 @@ services:
     # Bearer token for authentication. Could be extracted from either browser
     # console, or here: https://wiki.f0rth.space/a/api.
     token: SECRET
+    # A path to the page containg welcome message, for the 'welcome' module.
+    welcome_message_page: /en/residents/welcome-message
 
   # OpenAI API configuration.
   openai:
