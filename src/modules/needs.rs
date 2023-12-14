@@ -97,7 +97,7 @@ async fn handle_message(
 
     bot.pin_chat_message(msg.chat.id, msg.id).await?;
 
-    update_pinned_needs_message(&bot, &env).await?;
+    update_pinned_needs_message(&bot, &env, None).await?;
 
     Ok(())
 }
@@ -171,13 +171,19 @@ async fn edit_list_message(
 }
 
 /// Update last pinned `/needs` message.
-async fn update_pinned_needs_message(bot: &Bot, env: &BotEnv) -> Result<()> {
-    let last_pin = models::needs_last_pin.get(&mut env.conn())?;
-    if let Some(pin) = last_pin {
-        edit_list_message(bot, env, pin.thread_id_pair.chat, pin.message_id)
-            .await
-            .log_error("Cannot edit last pin");
+async fn update_pinned_needs_message(
+    bot: &Bot,
+    env: &BotEnv,
+    msg: Option<&Message>,
+) -> Result<()> {
+    let pin = models::needs_last_pin.get(&mut env.conn())?;
+    let Some(pin) = pin else { return Ok(()) };
+    if msg.map_or(false, |msg| pin.thread_id_pair.has_message(msg)) {
+        return Ok(());
     }
+    edit_list_message(bot, env, pin.thread_id_pair.chat, pin.message_id)
+        .await
+        .log_error("Cannot edit last pin");
     Ok(())
 }
 
@@ -349,12 +355,12 @@ async fn handle_callback_bought(
     .await
     .log_error("Cannot send message to needs thread");
 
-    if let Some(message) = callback.message {
+    if let Some(ref message) = callback.message {
         edit_list_message(&bot, &env, message.chat.id, message.id)
             .await
             .log_error("Cannot edit callback message");
     }
-    update_pinned_needs_message(&bot, &env).await?;
+    update_pinned_needs_message(&bot, &env, callback.message.as_ref()).await?;
 
     Ok(())
 }
