@@ -47,15 +47,20 @@ pub async fn inspect_message<'a>(
         if state.lock().unwrap().0.remove(&(reply.chat.id, thread_id)) {
             // This is the first message in newly created topic. It is pinned
             // implicitly.
-            forward_message(&bot, &env, &msg).await?;
+            forward_message(&bot, &env, &msg, false).await?;
         }
     } else if let Some(pin) = msg.pinned_message() {
-        forward_message(&bot, &env, pin).await?;
+        forward_message(&bot, &env, pin, true).await?;
     }
     Ok(())
 }
 
-async fn forward_message(bot: &Bot, env: &BotEnv, msg: &Message) -> Result<()> {
+async fn forward_message(
+    bot: &Bot,
+    env: &BotEnv,
+    msg: &Message,
+    is_pin: bool,
+) -> Result<()> {
     let forward_to = env.config.telegram.chats.forward_pins.iter().find(|f| {
         f.from == msg.chat.id
             && msg.thread_id.map_or(true, |t| !f.ignore_threads.contains(&t))
@@ -65,7 +70,11 @@ async fn forward_message(bot: &Bot, env: &BotEnv, msg: &Message) -> Result<()> {
     let (link_url, topic_name) = make_message_link(bot, env, msg).await?;
 
     let mut buttons = vec![[InlineKeyboardButton::url(
-        format!("📌 in {topic_name}"),
+        if is_pin {
+            format!("📌 in {topic_name}")
+        } else {
+            format!("➕ {topic_name}")
+        },
         Url::parse(&link_url)?,
     )]];
     if let Some(from) = msg.forward_from_user().or(msg.from.as_ref()) {
