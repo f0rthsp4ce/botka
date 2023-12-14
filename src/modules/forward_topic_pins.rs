@@ -20,7 +20,7 @@ use teloxide::utils::html;
 use crate::common::{BotEnv, TopicEmojis};
 use crate::db::{DbChatId, DbThreadId};
 use crate::models;
-use crate::utils::{format_to, ChatIdExt as _, MessageExt as _, UserExt as _};
+use crate::utils::{format_to, ChatIdExt as _, MessageExt as _};
 
 /// State contains a set of newly created topics.
 #[derive(Clone, Debug, Default)]
@@ -64,18 +64,6 @@ async fn forward_message(bot: &Bot, env: &BotEnv, msg: &Message) -> Result<()> {
 
     let (link_url, topic_name) = make_message_link(bot, env, msg).await?;
 
-    if let Some(poll) = msg.poll().filter(|p| !p.is_anonymous) {
-        // Polls with visible voters can't be forwarded to channels.
-        bot.send_message(
-            forward_to.to,
-            render_poll(msg, poll, &html::link(&topic_name, &link_url)),
-        )
-        .parse_mode(teloxide::types::ParseMode::Html)
-        .disable_web_page_preview(true)
-        .await?;
-        return Ok(());
-    }
-
     let mut buttons = vec![[InlineKeyboardButton::url(
         format!("📌 in {topic_name}"),
         Url::parse(&link_url)?,
@@ -87,10 +75,19 @@ async fn forward_message(bot: &Bot, env: &BotEnv, msg: &Message) -> Result<()> {
         )]);
     }
 
-    bot.copy_message(forward_to.to, msg.chat.id, msg.id)
-        .reply_markup(ReplyMarkup::inline_kb(buttons))
-        .send()
-        .await?;
+    if let Some(poll) = msg.poll().filter(|p| !p.is_anonymous) {
+        // Polls with visible voters can't be forwarded to channels.
+        bot.send_message(forward_to.to, render_poll(poll))
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .reply_markup(ReplyMarkup::inline_kb(buttons))
+            .disable_web_page_preview(true)
+            .await?;
+    } else {
+        bot.copy_message(forward_to.to, msg.chat.id, msg.id)
+            .reply_markup(ReplyMarkup::inline_kb(buttons))
+            .send()
+            .await?;
+    }
 
     Ok(())
 }
@@ -150,19 +147,11 @@ async fn make_message_link(
     Ok((url, text))
 }
 
-fn render_poll(msg: &Message, poll: &Poll, topic_link: &str) -> String {
-    let mut text = "<b>📌 Poll ".to_string();
-    if poll.is_closed {
-        format_to!(text, "results ");
-    }
-    format_to!(text, "in {topic_link}");
-    if let Some(from) = &msg.from {
-        format_to!(text, " by {}", from.html_link());
-    }
-    if let Some(forwarded_from) = &msg.forward_from_user() {
-        format_to!(text, " (forwarded from {})", forwarded_from.html_link());
-    }
-    format_to!(text, "</b>\n\n{}\n\n", html::escape(&poll.question));
+fn render_poll(poll: &Poll) -> String {
+    let mut text = html::escape(&poll.question);
+    format_to!(text, "\n\n<u>");
+    text.push_str(if poll.is_closed { "Closed poll" } else { "Poll" });
+    format_to!(text, "</u>\n");
     for opt in &poll.options {
         if poll.is_closed {
             let percent = opt.voter_count * 100 / poll.total_voter_count;
