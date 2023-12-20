@@ -13,9 +13,10 @@ use diesel::prelude::*;
 use reqwest::Url;
 use teloxide::prelude::*;
 use teloxide::types::{
-    InlineKeyboardButton, MessageKind, ReplyMarkup, ThreadId,
+    InlineKeyboardButton, MessageEntity, MessageKind, ReplyMarkup, ThreadId,
 };
 use teloxide::utils::html;
+use teloxide::{ApiError, RequestError};
 
 use crate::common::{BotEnv, TopicEmojis};
 use crate::db::{DbChatId, DbThreadId};
@@ -91,11 +92,33 @@ async fn forward_message(
             .reply_markup(ReplyMarkup::inline_kb(buttons))
             .disable_web_page_preview(true)
             .await?;
-    } else {
-        bot.copy_message(forward_to.to, msg.chat.id, msg.id)
-            .reply_markup(ReplyMarkup::inline_kb(buttons))
-            .send()
-            .await?;
+        return Ok(());
+    }
+
+    let result = bot
+        .copy_message(forward_to.to, msg.chat.id, msg.id)
+        .reply_markup(ReplyMarkup::inline_kb(buttons.clone()))
+        .send()
+        .await;
+
+    match (&result, msg.caption(), msg.caption_entities()) {
+        (
+            // XXX: Assume that this error is not added to teloxide yet.
+            Err(RequestError::Api(ApiError::Unknown(e))),
+            Some(caption),
+            Some(entities),
+        ) if e == "Bad Request: message caption is too long" => {
+            let (caption, entities) = truncate_message(caption, entities);
+            bot.copy_message(forward_to.to, msg.chat.id, msg.id)
+                .caption(caption)
+                .caption_entities(entities)
+                .reply_markup(ReplyMarkup::inline_kb(buttons))
+                .send()
+                .await?;
+        }
+        _ => {
+            result?;
+        }
     }
 
     Ok(())
@@ -171,4 +194,39 @@ fn render_poll(poll: &Poll) -> String {
         format_to!(text, "{}\n", html::escape(&opt.text));
     }
     text
+}
+
+/// Truncate message to fit Telegram limits.
+fn truncate_message(
+    text: &str,
+    entities: &[MessageEntity],
+) -> (String, Vec<MessageEntity>) {
+    // https://github.com/tginfo/Telegram-Limits/blob/b5bd6d38386d2c99047e4ad782158d315b30ad06/localization/en/data.json#L270-L274
+    // According to my experiments, this limit is applied to Unicode codepoints,
+    // not UTF-16 code units.
+    let total_limit_cp = 1024;
+
+    let suffix = "…\n\n[Message truncated]";
+
+    if text.chars().take(total_limit_cp + 1).count() != total_limit_cp + 1 {
+        return (text.to_string(), entities.to_vec());
+    }
+
+    let limit_cp = total_limit_cp - suffix.chars().count();
+
+    let new_text =
+        text.chars().take(limit_cp).chain(suffix.chars()).collect::<String>();
+
+    let limit_utf16 = text.encode_utf16().take(limit_cp).count();
+    let new_entities = entities
+        .iter()
+        .filter(|&e| e.offset < limit_utf16)
+        .map(|e| MessageEntity {
+            offset: e.offset,
+            length: (e.offset + e.length).min(limit_utf16) - e.offset,
+            kind: e.kind.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    (new_text, new_entities)
 }
