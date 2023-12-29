@@ -161,6 +161,15 @@ pub struct NeededItem {
     pub item: String,
 }
 
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = crate::schema::dashboard_messages)]
+pub struct NewDashboardMessage<'a> {
+    pub chat_id: DbChatId,
+    pub thread_id: DbThreadId,
+    pub message_id: DbMessageId,
+    pub text: &'a str,
+}
+
 // Database option models
 
 #[derive(Serialize, Deserialize, Debug)]

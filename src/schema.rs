@@ -12,6 +12,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    dashboard_messages (chat_id, thread_id, message_id) {
+        chat_id -> BigInt,
+        thread_id -> Integer,
+        message_id -> Integer,
+        text -> Text,
+    }
+}
+
+diesel::table! {
     forwards (orig_chat_id) {
         orig_chat_id -> BigInt,
         orig_msg_id -> Integer,
@@ -112,6 +121,7 @@ diesel::joinable!(forwards -> tg_users (orig_chat_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     borrowed_items,
+    dashboard_messages,
     forwards,
     needed_items,
     options,

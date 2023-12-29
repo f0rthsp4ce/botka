@@ -9,3 +9,4 @@ DROP TABLE IF EXISTS user_macs;
 DROP TABLE IF EXISTS tracked_polls;
 DROP TABLE IF EXISTS borrowed_items;
 DROP TABLE IF EXISTS needed_items;
+DROP TABLE IF EXISTS dashboard_messages;

@@ -34,6 +34,7 @@ pub struct Telegram {
 pub struct TelegramChats {
     pub residential: Vec<ChatId>,
     pub borrowed_items: Vec<ThreadIdPair>,
+    pub dashboard: ThreadIdPair,
     pub forward_channel: ChatId,
     pub forward_pins: Vec<FowardPins>,
     pub needs: ThreadIdPair,
@@ -80,6 +81,7 @@ pub struct WikiJs {
     pub url: String,
     pub token: String,
     pub welcome_message_page: String,
+    pub dashboard_page: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

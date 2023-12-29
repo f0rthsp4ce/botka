@@ -2,6 +2,7 @@
 
 pub mod basic;
 pub mod borrowed_items;
+pub mod dashboard;
 pub mod debates;
 pub mod forward_topic_pins;
 pub mod needs;

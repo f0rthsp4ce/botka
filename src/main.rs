@@ -174,6 +174,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .inspect_err(modules::rename_closed_topics::inspect_message)
                     .inspect_err(modules::forward_topic_pins::inspect_message)
                     .branch(modules::basic::command_handler())
+                    .branch(modules::dashboard::command_handler())
                     .branch(modules::debates::command_handler())
                     .branch(modules::userctl::command_handler())
                     .branch(

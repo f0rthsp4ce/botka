@@ -97,3 +97,11 @@ CREATE TABLE needed_items (
 
   item TEXT NOT NULL
 );
+
+CREATE TABLE dashboard_messages (
+  chat_id BIGINT NOT NULL,
+  thread_id INTEGER NOT NULL,
+  message_id INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  PRIMARY KEY (chat_id, thread_id, message_id)
+);

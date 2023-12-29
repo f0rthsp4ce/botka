@@ -7,6 +7,10 @@ use nom::error::ParseError;
 use nom::sequence::tuple;
 use nom::IResult;
 use serde::{Deserialize, Deserializer};
+use teloxide::prelude::ChatId;
+use teloxide::types::{MessageId, ThreadId};
+
+use super::ThreadIdPair;
 
 /// Deserialize a duration returned by mikrotik, e.g. `"2w3d4h56m23s"`.
 pub fn deserealize_duration<'de, D>(
@@ -69,6 +73,17 @@ fn tgapi_method(input: &str) -> IResult<&str, &str> {
     Ok((input, method))
 }
 
+/// Parse a Telegram thread link, e.g. `"https://t.me/c/1234567890/321"`.
+/// XXX: This doesn't support chats with @username.
+pub fn parse_tg_thread_link(input: &str) -> Option<ThreadIdPair> {
+    let input = input.strip_prefix("https://t.me/c/")?;
+    let (chat, thread) = input.split_once('/')?;
+    Some(ThreadIdPair {
+        chat: ChatId(-1_000_000_000_000 - chat.parse::<i64>().ok()?),
+        thread: ThreadId(MessageId(thread.parse().ok()?)),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,6 +124,22 @@ mod tests {
         assert_eq!(
             parse_tgapi_method("/bot123:abc/GetUpdates"),
             Some("GetUpdates"),
+        );
+    }
+
+    #[test]
+    fn test_parse_tg_thread_link() {
+        assert_eq!(
+            parse_tg_thread_link("https://t.me/c/1234567890/321"),
+            Some(ThreadIdPair {
+                #[allow(clippy::unreadable_literal)]
+                chat: ChatId(-1001234567890),
+                thread: ThreadId(MessageId(321)),
+            }),
+        );
+        assert_eq!(
+            parse_tg_thread_link("https://t.me/c/1234567890/321/4321"),
+            None
         );
     }
 }

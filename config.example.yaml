@@ -24,6 +24,9 @@ telegram:
     borrowed_items:
       - { chat: -1001234567890, thread: 123 }
 
+    # Thread for the 'dashboard' module.
+    dashboard: { chat: -1001234567890, thread: 123 }
+
     # The ID of the backup message channel for the debates module.
     # Bot maintainer is supposed to create private channel and add bot into it.
     forward_channel: -1001234567890
@@ -70,6 +73,8 @@ services:
     token: SECRET
     # A path to the page containg welcome message, for the 'welcome' module.
     welcome_message_page: /en/residents/welcome-message
+    # A path to the page contaning dashboard text, for the 'dashboard' module.
+    dashboard_page: /en/residents/topic-index
 
   # OpenAI API configuration.
   openai:

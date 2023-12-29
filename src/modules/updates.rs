@@ -13,9 +13,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::common::BotEnv;
 use crate::models;
-use crate::utils::get_wikijs_updates;
+use crate::utils::{get_wikijs_updates, ResultExt as _};
 
 pub async fn task(env: Arc<BotEnv>, bot: Bot, shutdown: CancellationToken) {
+    let mut initial = true;
     loop {
         select! {
             () = shutdown.cancelled() => {
@@ -24,17 +25,23 @@ pub async fn task(env: Arc<BotEnv>, bot: Bot, shutdown: CancellationToken) {
             () = sleep(Duration::from_secs(60)) => {}
         }
 
-        match check_wikijs_updates(Arc::clone(&env), bot.clone()).await {
+        match check_wikijs_updates(&env, &bot, initial).await {
             Ok(()) => crate::metrics::update_service("wikijs", true),
             Err(e) => {
                 crate::metrics::update_service("wikijs", false);
                 log::error!("check_wikijs_updates: {e}");
             }
         }
+
+        initial = false;
     }
 }
 
-async fn check_wikijs_updates(env: Arc<BotEnv>, bot: Bot) -> Result<()> {
+async fn check_wikijs_updates(
+    env: &Arc<BotEnv>,
+    bot: &Bot,
+    initial: bool,
+) -> Result<()> {
     let old_update_state = models::wikijs_update_state.get(&mut env.conn())?;
     let (text, new_update_state) = get_wikijs_updates(
         &env.config.services.wikijs.url,
@@ -42,6 +49,14 @@ async fn check_wikijs_updates(env: Arc<BotEnv>, bot: Bot) -> Result<()> {
         old_update_state.clone(),
     )
     .await?;
+
+    if initial || text.is_some() {
+        // TODO: make get_wikijs_updates return a list of urls instead of just a
+        // string.
+        crate::modules::dashboard::update(bot, env)
+            .await
+            .log_error("Failed to update dashboard");
+    }
 
     if let Some(text) = text {
         bot.send_message(env.config.telegram.chats.wikijs_updates.chat, text)

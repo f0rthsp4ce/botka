@@ -123,10 +123,19 @@ async fn handle_join(
 }
 
 /// Get text within `> BEGIN` and `> END` markers.
-fn extract_message(text: &str) -> Option<&str> {
+/// TODO: move somewhere else.
+pub fn extract_message(text: &str) -> Option<&str> {
     let begin_tag = "\n> BEGIN\n";
-    let text = text[text.find(begin_tag)? + begin_tag.len()..].trim_start();
-    Some(text[..text.find("\n> END\n")?].trim_end())
+    let text = text
+        .strip_prefix(&begin_tag[1..])
+        .or_else(|| Some(&text[text.find(begin_tag)? + begin_tag.len()..]))?
+        .trim_start();
+    let end_tag = "\n> END\n";
+    let text = text
+        .strip_suffix(&end_tag[0..end_tag.len() - 1])
+        .or_else(|| Some(&text[..text.rfind(end_tag)?]))?
+        .trim_end();
+    Some(text)
 }
 
 #[cfg(test)]
@@ -143,5 +152,7 @@ mod tests {
             extract_message("foo\n> BEGIN\nbar\nbaz\n> END\n"),
             Some("bar\nbaz")
         );
+        assert_eq!(extract_message("> BEGIN\nbar\n> END\n"), Some("bar"));
+        assert_eq!(extract_message("foo\n> BEGIN\nbar\n> END"), Some("bar"));
     }
 }
