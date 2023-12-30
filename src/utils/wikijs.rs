@@ -194,6 +194,7 @@ pub async fn get_wikijs_updates(
     let mut response3 = {
         let query_last = result
             .iter()
+            .sorted_by_key(|(id, _)| id.0)
             .filter_map(|(id, res)| {
                 Some(format!(
                     "q{}: version(pageId: {}, versionId: {}) {{ action }}",
@@ -204,6 +205,7 @@ pub async fn get_wikijs_updates(
 
         let query_prev = result
             .iter()
+            .sorted_by_key(|(id, _)| id.0)
             .filter_map(|(id, res)| {
                 Some(format!(
                     "q{}: version(pageId: {}, versionId: {}) {{ content }}",
@@ -254,8 +256,9 @@ pub async fn get_wikijs_updates(
     }
 
     let text = result
-        .values()
-        .map(|x| {
+        .iter()
+        .sorted_by_key(|(id, _)| id.0)
+        .map(|(_, x)| {
             format!(
                 "{} {} by {}{}",
                 x.link,
@@ -413,6 +416,9 @@ structstruck::strike! {
         prev: HashMap<String, struct ResponseUpdates3_2 { content: String }>,
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 #[cfg(test)]
 mod test {
