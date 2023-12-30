@@ -6,7 +6,10 @@ use chrono::{DateTime, Utc};
 use gql_client::Client;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use tap::Pipe as _;
 use teloxide::utils::html;
+
+use crate::utils::format_to;
 
 /// Get markdown page source from Wiki.js GraphQL API.
 pub async fn get_wikijs_page(
@@ -17,7 +20,18 @@ pub async fn get_wikijs_page(
     let client = mk_client(endpoint, token);
     let (locale, path) =
         path.trim_start_matches('/').split_once('/').context("Invalid path")?;
-    let response = make_query::<ResponsePage>(
+
+    structstruck::strike! {
+        #[strikethrough[derive(Deserialize, Debug)]]
+        #[strikethrough[serde(rename_all = "camelCase")]]
+        struct Response {
+            pages: struct Response1 {
+                single_by_path: struct Response2 { content: String }
+            }
+        }
+    }
+
+    let response = make_query::<Response>(
         &client,
         "query($locale: String!, $path: String!) {\
             pages {\
@@ -51,7 +65,6 @@ pub struct WikiJsUpdateState {
 /// Connect to Wiki.js GraphQL API and get summary of recent updates since
 /// `previous_check`.  Resulting datetime should be passed to `previous_check`
 /// in the next call.
-#[allow(clippy::single_char_add_str)] // for consistency
 pub async fn get_wikijs_updates(
     endpoint: &str,
     token: &str,
@@ -59,9 +72,74 @@ pub async fn get_wikijs_updates(
 ) -> Result<(Option<String>, WikiJsUpdateState)> {
     let client = mk_client(endpoint, token);
 
-    // 1. Get list of recently updated pages
-    let mut recent_pages = make_query::<ResponseUpdates1>(
+    let mut recent_pages = updates_step1_get_recent_pages(&client).await?;
+
+    let last_update =
+        recent_pages.iter().map(|x| x.updated_at).max().context(
+            "Failed to get last update time. The wiki has no pages?",
+        )?;
+
+    let Some(mut update_state) = update_state else {
+        // This is a first run. Just return the last update time.
+        return Ok((
+            None,
+            WikiJsUpdateState { last_update, pages: HashMap::new() },
+        ));
+    };
+
+    recent_pages.retain(|page| page.updated_at > update_state.last_update);
+    if recent_pages.is_empty() {
+        // No updates since last check.
+        return Ok((
+            None,
+            WikiJsUpdateState { last_update, pages: update_state.pages },
+        ));
+    }
+
+    let mut result = updates_step2_get_page_history_and_last_version(
         &client,
+        endpoint,
+        &mut update_state,
+        &recent_pages,
+    )
+    .await?;
+
+    if result.is_empty() {
+        // We had pages with updated "updatedAt" field, but none of them had
+        // changes in history.
+        return Ok((None, update_state));
+    }
+
+    updates_step3_get_action_name_and_previous_version(&client, &mut result)
+        .await?;
+
+    Ok((Some(updates_format_text(result)), update_state))
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct UpdateRecentPage {
+    id: PageId,
+    locale: String,
+    path: String,
+    title: String,
+    updated_at: DateTime<Utc>,
+}
+
+/// Step 1 of `get_wikijs_updates`. Get list of recently updated pages.
+async fn updates_step1_get_recent_pages(
+    client: &Client,
+) -> Result<Vec<UpdateRecentPage>> {
+    structstruck::strike! {
+        #[strikethrough[derive(Deserialize, Debug)]]
+        #[strikethrough[serde(rename_all = "camelCase")]]
+        struct Response {
+            pages: struct Response1 { list: Vec<UpdateRecentPage> }
+        }
+    }
+
+    make_query::<Response>(
+        client,
         "{\
             pages {\
                 list(limit: 10, orderBy: UPDATED, orderByDirection: DESC) {\
@@ -73,35 +151,22 @@ pub async fn get_wikijs_updates(
     )
     .await?
     .pages
-    .list;
+    .list
+    .pipe(Ok)
+}
 
-    let last_update =
-        recent_pages.iter().map(|x| x.updated_at).max().context(
-            "Failed to get last update time. The wiki has no pages?",
-        )?;
-
-    // This is a first run. Just return the last update time.
-    let Some(mut update_state) = update_state else {
-        return Ok((
-            None,
-            WikiJsUpdateState { last_update, pages: HashMap::new() },
-        ));
-    };
-    let prev_last_update = update_state.last_update;
-
-    recent_pages.retain(|page| page.updated_at > update_state.last_update);
-    if recent_pages.is_empty() {
-        return Ok((
-            None,
-            WikiJsUpdateState { last_update, pages: update_state.pages },
-        ));
-    }
-
-    // 2. For each updated page, get its history.
+/// Step 2 of `get_wikijs_updates`. For each updated page, get its history and
+/// the contents for the latest version.
+async fn updates_step2_get_page_history_and_last_version(
+    client: &Client,
+    endpoint: &str,
+    update_state: &mut WikiJsUpdateState,
+    recent_pages: &[UpdateRecentPage],
+) -> Result<HashMap<PageId, IntermediateResult>> {
     // The field `pages.history.trail` doesnt include the latest version, so we
     // need to get it separately through `pages.single`.
     let mut query = "{".to_string();
-    for page in &recent_pages {
+    for page in recent_pages {
         writeln!(
             query,
             "q{0}: pages {{\
@@ -114,13 +179,33 @@ pub async fn get_wikijs_updates(
         )
         .unwrap();
     }
-    query.push_str("}");
+    query.push('}');
 
-    let mut response2 =
-        make_query::<HashMap<String, ResponseUpdates2>>(&client, &query, None)
-            .await?;
+    structstruck::strike! {
+        #[strikethrough[derive(Deserialize, Debug)]]
+        #[strikethrough[serde(rename_all = "camelCase")]]
+        struct Response {
+            single: struct Response1 {
+                author_name: String,
+                updated_at: DateTime<Utc>,
+                content: String,
+            },
+            history: struct Response2 {
+                trail: Vec<struct Response3 {
+                    version_id: VersionId,
+                    version_date: DateTime<Utc>,
+                    author_name: String,
+                    action_type: String,
+                }>,
+            }
+        }
+    }
 
-    update_state.last_update = response2
+    let mut response: HashMap<String, Response> =
+        make_query(client, &query, None).await?;
+
+    let prev_last_update = update_state.last_update;
+    update_state.last_update = response
         .values()
         .map(|x| x.single.updated_at)
         .max()
@@ -128,8 +213,8 @@ pub async fn get_wikijs_updates(
 
     let mut result = HashMap::new();
 
-    for pag in &recent_pages {
-        let Some(page) = response2.remove(&format!("q{}", pag.id.0)) else {
+    for pag in recent_pages {
+        let Some(page) = response.remove(&format!("q{}", pag.id.0)) else {
             log::warn!("No `q{}` in response2", pag.id.0);
             continue;
         };
@@ -179,66 +264,72 @@ pub async fn get_wikijs_updates(
         );
     }
 
-    if result.is_empty() {
-        // We had pages with updated "updatedAt" field, but none of them had
-        // changes in history.
-        return Ok((None, update_state));
+    Ok(result)
+}
+
+/// Step 3 of `get_wikijs_updates`. For each page, get:
+/// - Action name for last version id (since last action is not included in
+///   `pages.history.trail` in step 2)
+/// - Content for previous version id (to compare diff)
+async fn updates_step3_get_action_name_and_previous_version(
+    client: &Client,
+    result: &mut HashMap<PageId, IntermediateResult>,
+) -> Result<()> {
+    let query_last = result
+        .iter()
+        .sorted_by_key(|(id, _)| id.0)
+        .filter_map(|(id, res)| {
+            Some(format!(
+                "q{}: version(pageId: {}, versionId: {}) {{ action }}",
+                id.0, id.0, res.last_version_id?.0
+            ))
+        })
+        .join("\n");
+
+    let query_prev = result
+        .iter()
+        .sorted_by_key(|(id, _)| id.0)
+        .filter_map(|(id, res)| {
+            Some(format!(
+                "q{}: version(pageId: {}, versionId: {}) {{ content }}",
+                id.0, id.0, res.prev_version_id?.0
+            ))
+        })
+        .join("\n");
+
+    let mut query = "{".to_string();
+    if !query_last.is_empty() {
+        format_to!(query, "last: pages {{{}}}", query_last);
+    }
+    if !query_prev.is_empty() {
+        format_to!(query, "prev: pages {{{}}}", query_prev);
+    }
+    query.push('}');
+
+    structstruck::strike! {
+        #[strikethrough[derive(Deserialize, Debug)]]
+        #[strikethrough[serde(rename_all = "camelCase")]]
+        struct Response {
+            #[serde(default)]
+            last: HashMap<String, struct Response1 { action: String }>,
+            #[serde(default)]
+            prev: HashMap<String, struct Response2 { content: String }>,
+        }
     }
 
-    // 3. For each page, get:
-    //    - Action name for last version id (since last action is not included
-    //        in `pages.history.trail` in step 2)
-    //    - Content for previous version id (to compare diff)
-    let mut response3 = {
-        let query_last = result
-            .iter()
-            .sorted_by_key(|(id, _)| id.0)
-            .filter_map(|(id, res)| {
-                Some(format!(
-                    "q{}: version(pageId: {}, versionId: {}) {{ action }}",
-                    id.0, id.0, res.last_version_id?.0
-                ))
-            })
-            .join("\n");
-
-        let query_prev = result
-            .iter()
-            .sorted_by_key(|(id, _)| id.0)
-            .filter_map(|(id, res)| {
-                Some(format!(
-                    "q{}: version(pageId: {}, versionId: {}) {{ content }}",
-                    id.0, id.0, res.prev_version_id?.0
-                ))
-            })
-            .join("\n");
-
-        let mut query = "{".to_string();
-        if !query_last.is_empty() {
-            query.push_str("last: pages {");
-            query.push_str(&query_last);
-            query.push_str("}");
-        }
-        if !query_prev.is_empty() {
-            query.push_str("prev: pages {");
-            query.push_str(&query_prev);
-            query.push_str("}");
-        }
-        query.push_str("}");
-
-        if query_last.is_empty() && query_prev.is_empty() {
-            // Avoid making empty query.
-            ResponseUpdates3 { last: HashMap::new(), prev: HashMap::new() }
-        } else {
-            make_query::<ResponseUpdates3>(&client, &query, None).await?
-        }
+    let mut response = if query_last.is_empty() && query_prev.is_empty() {
+        // Avoid making empty query.
+        Response { last: HashMap::new(), prev: HashMap::new() }
+    } else {
+        make_query(client, &query, None).await?
     };
 
-    for (page_id, res) in &mut result {
-        res.changes = match response3.prev.remove(&format!("q{}", page_id.0)) {
+    for (page_id, res) in result {
+        res.changes = match response.prev.remove(&format!("q{}", page_id.0)) {
             Some(page) => diff_stat(&page.content, &res.current_page_contents),
             None => (res.current_page_contents.len(), 0),
         };
-        if let Some(page) = response3.last.remove(&format!("q{}", page_id.0)) {
+        if let Some(page) = response.last.remove(&format!("q{}", page_id.0)) {
             push_to_uniq_vec(
                 &mut res.actions,
                 // Need to convert here because `pages.history.trail.actionType`
@@ -253,7 +344,19 @@ pub async fn get_wikijs_updates(
         }
     }
 
-    let text = result
+    Ok(())
+}
+
+fn mk_client(endpoint: &str, token: &str) -> Client {
+    let endpoint = endpoint.trim_end_matches('/');
+    Client::new_with_headers(
+        format!("{endpoint}/graphql"),
+        HashMap::from([("authorization", format!("Bearer {token}"))]),
+    )
+}
+
+fn updates_format_text(result: HashMap<PageId, IntermediateResult>) -> String {
+    result
         .iter()
         .sorted_by_key(|(id, _)| id.0)
         .map(|(_, x)| {
@@ -272,17 +375,7 @@ pub async fn get_wikijs_updates(
                 }
             )
         })
-        .join("\n");
-
-    Ok((Some(text), update_state))
-}
-
-fn mk_client(endpoint: &str, token: &str) -> Client {
-    let endpoint = endpoint.trim_end_matches('/');
-    Client::new_with_headers(
-        format!("{endpoint}/graphql"),
-        HashMap::from([("authorization", format!("Bearer {token}"))]),
-    )
+        .join("\n")
 }
 
 fn human_readable_join<S: AsRef<str>, I: ExactSizeIterator<Item = S>>(
@@ -354,66 +447,6 @@ struct PageId(u32);
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 struct VersionId(u32);
-
-structstruck::strike! {
-    #[strikethrough[derive(Deserialize, Debug)]]
-    #[strikethrough[serde(rename_all = "camelCase")]]
-    #[strikethrough[allow(non_camel_case_types)]] // for consistency
-    struct ResponsePage {
-        pages: struct ResponsePage_1 {
-            single_by_path: struct ResponsePage_2 {
-                content: String,
-            }
-        }
-    }
-}
-
-structstruck::strike! {
-    #[strikethrough[derive(Deserialize, Debug)]]
-    #[strikethrough[serde(rename_all = "camelCase")]]
-    struct ResponseUpdates1 {
-        pages: struct ResponseUpdates1_1 {
-            list: Vec<struct ResponseUpdates1_2 {
-                id: PageId,
-                locale: String,
-                path: String,
-                title: String,
-                updated_at: DateTime<Utc>,
-            }>,
-        }
-    }
-}
-
-structstruck::strike! {
-    #[strikethrough[derive(Deserialize, Debug)]]
-    #[strikethrough[serde(rename_all = "camelCase")]]
-    struct ResponseUpdates2 {
-        single: struct ResponseUpdates2_1 {
-            author_name: String,
-            updated_at: DateTime<Utc>,
-            content: String,
-        },
-        history: struct ResponseUpdates2_2 {
-            trail: Vec<struct ResponseUpdates2_3 {
-                version_id: VersionId,
-                version_date: DateTime<Utc>,
-                author_name: String,
-                action_type: String,
-            }>,
-        }
-    }
-}
-
-structstruck::strike! {
-    #[strikethrough[derive(Deserialize, Debug)]]
-    #[strikethrough[serde(rename_all = "camelCase")]]
-    struct ResponseUpdates3 {
-        #[serde(default)]
-        last: HashMap<String, struct ResponseUpdates3_1 { action: String }>,
-        #[serde(default)]
-        prev: HashMap<String, struct ResponseUpdates3_2 { content: String }>,
-    }
-}
 
 #[cfg(test)]
 mod tests;

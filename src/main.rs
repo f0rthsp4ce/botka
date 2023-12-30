@@ -20,8 +20,6 @@
     test,
     allow(clippy::iter_on_empty_collections, clippy::iter_on_single_items)
 )]
-// FIXME: fix these
-#![allow(clippy::too_many_lines)]
 
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
