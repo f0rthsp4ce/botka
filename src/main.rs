@@ -28,12 +28,13 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use argh::FromArgs;
 use common::{MyDialogue, State};
 use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use tap::Pipe as _;
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::{Dispatcher, HandlerExt, UpdateFilterExt};
 use teloxide::payloads::AnswerCallbackQuerySetters;
@@ -131,9 +132,10 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     metrics::register_metrics();
     modules::borrowed_items::register_metrics();
 
-    let config: crate::config::Config =
-        serde_yaml::from_reader(File::open(config_fpath)?)
-            .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
+    let config: crate::config::Config = File::open(config_fpath)
+        .context("Failed to open config file")?
+        .pipe(serde_yaml::from_reader)
+        .context("Failed to parse config file")?;
 
     if config.telegram.passive_mode {
         log::info!("Running in passive mode");

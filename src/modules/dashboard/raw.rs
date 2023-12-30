@@ -23,7 +23,7 @@ pub async fn update(
         log::info!("Resetting dashboard");
         reset(bot, Arc::clone(&env), thread).await?;
         if update_once(bot, Arc::clone(&env), thread, new_messages).await? {
-            return Err(anyhow::anyhow!("Dashboard reset failed"));
+            anyhow::bail!("Dashboard reset failed");
         }
     }
     Ok(())
@@ -77,7 +77,7 @@ async fn update_once(
 
     if !errors.is_empty() {
         log::error!("Dashboard update errors: {errors:#?}");
-        return Err(anyhow::anyhow!("Dashboard update errors"));
+        anyhow::bail!("Dashboard update errors");
     }
 
     Ok(need_reset)
@@ -127,7 +127,7 @@ async fn reset(
         .await;
 
     if has_errors {
-        return Err(anyhow::anyhow!("Dashboard reset errors"));
+        anyhow::bail!("Dashboard reset errors");
     }
 
     Ok(())

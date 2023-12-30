@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use chrono::{DateTime, Utc};
 use gql_client::Client;
 use itertools::Itertools;
@@ -76,11 +76,9 @@ pub async fn get_wikijs_updates(
     .list;
 
     let last_update =
-        recent_pages.iter().map(|x| x.updated_at).max().ok_or_else(|| {
-            anyhow::anyhow!(
-                "Failed to get last update time. The wiki has no pages?"
-            )
-        })?;
+        recent_pages.iter().map(|x| x.updated_at).max().context(
+            "Failed to get last update time. The wiki has no pages?",
+        )?;
 
     // This is a first run. Just return the last update time.
     let Some(mut update_state) = update_state else {
@@ -126,7 +124,7 @@ pub async fn get_wikijs_updates(
         .values()
         .map(|x| x.single.updated_at)
         .max()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get last update time"))?;
+        .context("Failed to get last update time")?;
 
     let mut result = HashMap::new();
 
@@ -348,7 +346,7 @@ where
         .query_with_vars::<K, _>(query, vars)
         .await
         .map_err(|e| anyhow::anyhow!(e))?
-        .ok_or_else(|| anyhow::anyhow!("Failed to get response"))
+        .context("Failed to get response")
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]

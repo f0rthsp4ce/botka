@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use async_openai::types::{
     ChatCompletionRequestMessageArgs, CreateChatCompletionRequestArgs,
 };
@@ -303,11 +303,11 @@ async fn classify_openai(
     let response_text = response
         .choices
         .first()
-        .ok_or_else(|| anyhow::anyhow!("Empty list of choices"))?
+        .context("Empty list of choices")?
         .message
         .content
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No content in response"))?
+        .context("No content in response")?
         .as_str();
     if response_text == "\"R\"" {
         return Ok(ClassificationResult::Returned);

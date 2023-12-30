@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use anyhow::Context;
+use anyhow::Context as _;
 
 lazy_static::lazy_static! {
     static ref URL_REGEX: regex::Regex =

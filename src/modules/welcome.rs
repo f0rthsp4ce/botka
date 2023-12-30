@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use chrono::{Duration, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use itertools::Itertools as _;
@@ -90,8 +90,8 @@ async fn handle_join(
     )
     .await?;
 
-    let text_template = extract_message(&page)
-        .ok_or_else(|| anyhow::anyhow!("No fenced block in welcome message"))?;
+    let text_template =
+        extract_message(&page).context("No fenced block in welcome message")?;
 
     let text = text_template.replace(
         "%newcomer%",

@@ -64,9 +64,7 @@ pub async fn inspect_message<'a>(
         .execute(&mut *env.conn())?;
 
     if update_count != 1 {
-        return Err(anyhow::anyhow!(
-            "Failed to update topic name: already updated?"
-        ));
+        anyhow::bail!("Failed to update topic name: already updated?");
     }
 
     Ok(())
