@@ -43,27 +43,33 @@ async fn check_wikijs_updates(
     initial: bool,
 ) -> Result<()> {
     let old_update_state = models::wikijs_update_state.get(&mut env.conn())?;
-    let (text, new_update_state) = get_wikijs_updates(
+    let (updates, new_update_state) = get_wikijs_updates(
         &env.config.services.wikijs.url,
         &env.config.services.wikijs.token,
         old_update_state.clone(),
     )
     .await?;
 
-    if initial || text.is_some() {
-        // TODO: make get_wikijs_updates return a list of urls instead of just a
-        // string.
+    if initial
+        || updates
+            .iter()
+            .flat_map(|x| x.paths())
+            .any(|p| p == env.config.services.wikijs.dashboard_page)
+    {
         crate::modules::dashboard::update(bot, env)
             .await
             .log_error("Failed to update dashboard");
     }
 
-    if let Some(text) = text {
-        bot.send_message(env.config.telegram.chats.wikijs_updates.chat, text)
-            .message_thread_id(env.config.telegram.chats.wikijs_updates.thread)
-            .parse_mode(ParseMode::Html)
-            .disable_web_page_preview(true)
-            .await?;
+    if let Some(updates) = updates {
+        bot.send_message(
+            env.config.telegram.chats.wikijs_updates.chat,
+            updates.to_html(),
+        )
+        .message_thread_id(env.config.telegram.chats.wikijs_updates.thread)
+        .parse_mode(ParseMode::Html)
+        .disable_web_page_preview(true)
+        .await?;
     }
 
     // XXX: Not sure if this check makes sense.  I want to avoid spurious

@@ -46,8 +46,14 @@ pub async fn get_wikijs_page(
     Ok(response.pages.single_by_path.content)
 }
 
+pub struct WikiJsUpdates {
+    endpoint: String,
+    pages: Vec<IntermediateResult>,
+}
+
 struct IntermediateResult {
-    link: String,
+    path: String,
+    title: String,
     authors: Vec<String>,
     actions: Vec<String>,
     current_page_contents: String,
@@ -69,7 +75,7 @@ pub async fn get_wikijs_updates(
     endpoint: &str,
     token: &str,
     update_state: Option<WikiJsUpdateState>,
-) -> Result<(Option<String>, WikiJsUpdateState)> {
+) -> Result<(Option<WikiJsUpdates>, WikiJsUpdateState)> {
     let client = mk_client(endpoint, token);
 
     let mut recent_pages = updates_step1_get_recent_pages(&client).await?;
@@ -98,7 +104,6 @@ pub async fn get_wikijs_updates(
 
     let mut result = updates_step2_get_page_history_and_last_version(
         &client,
-        endpoint,
         &mut update_state,
         &recent_pages,
     )
@@ -113,7 +118,17 @@ pub async fn get_wikijs_updates(
     updates_step3_get_action_name_and_previous_version(&client, &mut result)
         .await?;
 
-    Ok((Some(updates_format_text(result)), update_state))
+    Ok((
+        Some(WikiJsUpdates {
+            endpoint: endpoint.to_string(),
+            pages: result
+                .into_iter()
+                .sorted_by_key(|(id, _)| id.0)
+                .map(|(_, x)| x)
+                .collect(),
+        }),
+        update_state,
+    ))
 }
 
 #[derive(Deserialize, Debug)]
@@ -159,7 +174,6 @@ async fn updates_step1_get_recent_pages(
 /// the contents for the latest version.
 async fn updates_step2_get_page_history_and_last_version(
     client: &Client,
-    endpoint: &str,
     update_state: &mut WikiJsUpdateState,
     recent_pages: &[UpdateRecentPage],
 ) -> Result<HashMap<PageId, IntermediateResult>> {
@@ -250,10 +264,8 @@ async fn updates_step2_get_page_history_and_last_version(
         result.insert(
             pag.id,
             IntermediateResult {
-                link: html::link(
-                    &format!("{}/{}/{}", endpoint, &pag.locale, &pag.path),
-                    &pag.title,
-                ),
+                path: format!("/{}/{}", &pag.locale, &pag.path),
+                title: pag.title.clone(),
                 authors,
                 actions,
                 current_page_contents: page.single.content,
@@ -355,27 +367,37 @@ fn mk_client(endpoint: &str, token: &str) -> Client {
     )
 }
 
-fn updates_format_text(result: HashMap<PageId, IntermediateResult>) -> String {
-    result
-        .iter()
-        .sorted_by_key(|(id, _)| id.0)
-        .map(|(_, x)| {
-            format!(
-                "{} {} by {}{}",
-                x.link,
-                human_readable_join(
-                    x.actions.iter().map(|s| humanize_action_type(s))
-                ),
-                human_readable_join(x.authors.iter()),
-                match x.changes {
-                    (0, 0) => String::new(),
-                    (0, del) => format!(" (-{del})"),
-                    (add, 0) => format!(" (+{add})"),
-                    (add, del) => format!(" (+{add}, -{del})"),
-                }
-            )
-        })
-        .join("\n")
+impl WikiJsUpdates {
+    /// Render updates as HTML.
+    pub fn to_html(&self) -> String {
+        self.pages
+            .iter()
+            .map(|x| {
+                format!(
+                    "{} {} by {}{}",
+                    html::link(
+                        &format!("{}{}", self.endpoint, x.path),
+                        &x.title,
+                    ),
+                    human_readable_join(
+                        x.actions.iter().map(|s| humanize_action_type(s))
+                    ),
+                    human_readable_join(x.authors.iter()),
+                    match x.changes {
+                        (0, 0) => String::new(),
+                        (0, del) => format!(" (-{del})"),
+                        (add, 0) => format!(" (+{add})"),
+                        (add, del) => format!(" (+{add}, -{del})"),
+                    }
+                )
+            })
+            .join("\n")
+    }
+
+    /// Iterator over a list of paths of updated pages.
+    pub fn paths(&self) -> impl Iterator<Item = &str> {
+        self.pages.iter().map(|x| x.path.as_str())
+    }
 }
 
 fn human_readable_join<S: AsRef<str>, I: ExactSizeIterator<Item = S>>(

@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::DateTime;
 use hyper::{Body, Response, Server};
+use itertools::Itertools as _;
 use tap::Pipe as _;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -40,22 +41,22 @@ async fn test_updates_none() {
             },
         ]}}}),
     );
-    let (text, state) =
+    let (updates, state) =
         get_wikijs_updates(&mock_server.endpoint(), "token", None)
             .await
             .unwrap();
-    assert_eq!(text, None);
+    assert!(updates.is_none());
     assert_eq!(state, make_update_state("2021-01-02T00:00:00Z", &[]));
 
     // Subsequent update
-    let (text, state) = get_wikijs_updates(
+    let (updates, state) = get_wikijs_updates(
         &mock_server.endpoint(),
         "token",
         Some(make_update_state("2021-01-02T00:00:00Z", &[])),
     )
     .await
     .unwrap();
-    assert_eq!(text, None);
+    assert!(updates.is_none());
     assert_eq!(state, make_update_state("2021-01-02T00:00:00Z", &[]));
 
     mock_server.stop().await;
@@ -156,7 +157,7 @@ async fn test_updates_edited() {
         }),
     );
 
-    let (text, state) = get_wikijs_updates(
+    let (updates, state) = get_wikijs_updates(
         &mock_server.endpoint(),
         "token",
         Some(make_update_state("2021-01-02T00:00:00Z", &[])),
@@ -164,10 +165,12 @@ async fn test_updates_edited() {
     .await
     .unwrap();
 
+    let updates = updates.unwrap();
     assert_eq!(
-        text.unwrap().replace(&mock_server.endpoint(), "%ADDR%"),
+        updates.to_html().replace(&mock_server.endpoint(), "%ADDR%"),
         "<a href=\"%ADDR%/en/t_path_1\">t_title_1</a> edited by t_authorName (+12, -12)",
     );
+    assert_eq!(updates.paths().collect_vec(), vec!["/en/t_path_1"]);
     assert_eq!(state, make_update_state("2021-01-04T00:00:00Z", &[(1, 4)]));
 
     mock_server.stop().await;
@@ -311,7 +314,7 @@ async fn test_updates_edited_multiple() {
         }),
     );
 
-    let (text, state) = get_wikijs_updates(
+    let (updates, state) = get_wikijs_updates(
         &mock_server.endpoint(),
         "token",
         Some(make_update_state("2021-01-01T00:00:00Z", &[(1, 1), (2, 1)])),
@@ -319,10 +322,15 @@ async fn test_updates_edited_multiple() {
     .await
     .unwrap();
 
+    let updates = updates.unwrap();
     assert_eq!(
-        text.unwrap().replace(&mock_server.endpoint(), "%ADDR%"),
+        updates.to_html().replace(&mock_server.endpoint(), "%ADDR%"),
         "<a href=\"%ADDR%/en/t_path_1\">t_title_1</a> edited by t_authorName (+12, -12)\n\
          <a href=\"%ADDR%/en/t_path_2\">t_title_2</a> edited by t_authorName (+12, -12)",
+    );
+    assert_eq!(
+        updates.paths().collect_vec(),
+        vec!["/en/t_path_1", "/en/t_path_2"]
     );
     assert_eq!(
         state,
@@ -378,7 +386,7 @@ async fn test_updates_new_page_added() {
         }}),
     );
 
-    let (text, state) = get_wikijs_updates(
+    let (updates, state) = get_wikijs_updates(
         &mock_server.endpoint(),
         "token",
         Some(make_update_state("2021-01-01T00:00:00Z", &[(1, 10)])),
@@ -386,10 +394,12 @@ async fn test_updates_new_page_added() {
     .await
     .unwrap();
 
+    let updates = updates.unwrap();
     assert_eq!(
-        text.unwrap().replace(&mock_server.endpoint(), "%ADDR%"),
+        updates.to_html().replace(&mock_server.endpoint(), "%ADDR%"),
         "<a href=\"%ADDR%/en/t_path_2\">t_title_2</a> created by t_authorName (+12)",
     );
+    assert_eq!(updates.paths().collect_vec(), vec!["/en/t_path_2"]);
     assert_eq!(
         state,
         make_update_state("2021-01-02T00:00:00Z", &[(1, 10), (2, 0)]),
