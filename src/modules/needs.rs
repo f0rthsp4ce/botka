@@ -415,12 +415,17 @@ async fn handle_callback_undo(
         }
     };
 
+    update_pinned_needs_message(&bot, &env, None)
+        .await
+        .log_error("update pinned needs message");
+
     if was_all_bought {
         bot.pin_chat_message(
             item.pinned_chat_id,
             item.pinned_message_id.into(),
         )
-        .await?;
+        .await
+        .log_error("pin chat message");
     }
 
     if let Some(cb_message) = callback.message {
