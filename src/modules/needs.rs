@@ -346,7 +346,10 @@ async fn handle_callback_bought(
 
     bot.send_message(
         env.config.telegram.chats.needs.chat,
-        format!("{} bought an item {:?}.", callback.from.first_name, item.item),
+        format!(
+            "{} marked an item {:?} as bought.",
+            callback.from.first_name, item.item
+        ),
     )
     .message_thread_id(env.config.telegram.chats.needs.thread)
     .reply_markup(InlineKeyboardMarkup::new(vec![vec![
