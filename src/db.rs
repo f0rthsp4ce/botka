@@ -77,6 +77,7 @@ impl<T: Serialize + DeserializeOwned> ConfigOptionDef<T> {
     }
 
     /// Unset the value of this option in the database.
+    #[allow(dead_code)]
     pub fn unset(
         &self,
         conn: &mut SqliteConnection,

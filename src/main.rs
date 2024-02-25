@@ -28,13 +28,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{Context as _, Result};
 use argh::FromArgs;
-use common::{MyDialogue, State};
 use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tap::Pipe as _;
-use teloxide::dispatching::dialogue::InMemStorage;
-use teloxide::dispatching::{Dispatcher, HandlerExt, UpdateFilterExt};
+use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::payloads::AnswerCallbackQuerySetters;
 use teloxide::requests::Requester;
 use teloxide::types::{CallbackQuery, Message, Update};
@@ -169,18 +167,11 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                         !msg.chat.is_channel()
                             && !env.config.telegram.passive_mode
                     })
-                    .enter_dialogue::<Message, InMemStorage<State>, State>()
-                    .inspect_async(reset_dialogue_on_command)
                     .inspect_err(modules::rename_closed_topics::inspect_message)
                     .inspect_err(modules::forward_topic_pins::inspect_message)
                     .branch(modules::basic::command_handler())
                     .branch(modules::dashboard::command_handler())
-                    .branch(modules::debates::command_handler())
                     .branch(modules::userctl::command_handler())
-                    .branch(
-                        dptree::case![State::Forward]
-                            .endpoint(modules::debates::debate_send),
-                    )
                     .branch(modules::polls::message_handler())
                     .branch(modules::borrowed_items::command_handler())
                     .branch(modules::needs::message_handler())
@@ -198,7 +189,6 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
             .endpoint(drop_endpoint),
     )
     .dependencies(dptree::deps![
-        InMemStorage::<State>::new(),
         modules::forward_topic_pins::state(),
         modules::welcome::state(),
         Arc::clone(&bot_env)
@@ -264,17 +254,6 @@ fn scrape_log(
         Result::<_, anyhow::Error>::Ok(())
     })?;
     Ok(())
-}
-
-async fn reset_dialogue_on_command(msg: Message, dialogue: MyDialogue) {
-    let message_is_command =
-        msg.entities().and_then(|e| e.first()).is_some_and(|e| {
-            e.kind == teloxide::types::MessageEntityKind::BotCommand
-                && e.offset == 0
-        });
-    if message_is_command {
-        dialogue.update(State::Start).await.ok();
-    }
 }
 
 async fn drop_callback_query(

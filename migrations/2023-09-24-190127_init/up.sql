@@ -48,16 +48,6 @@ CREATE TABLE user_macs (
   PRIMARY KEY (tg_id, mac)
 );
 
-CREATE TABLE forwards (
-  orig_chat_id BIGINT PRIMARY KEY NOT NULL REFERENCES tg_users(id),
-  orig_msg_id INTEGER NOT NULL,
-
-  backup_chat_id BIGINT NOT NULL,
-  backup_msg_id INTEGER NOT NULL,
-
-  backup_text TEXT NOT NULL
-);
-
 CREATE TABLE options (
   name TEXT PRIMARY KEY NOT NULL,
   value TEXT NOT NULL

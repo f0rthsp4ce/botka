@@ -87,12 +87,8 @@ async fn cmd_help(bot: Bot, msg: Message) -> Result<()> {
     text.push_str(&commands_help::<crate::modules::basic::Commands>());
     text.push_str(&commands_help::<crate::modules::needs::Commands>());
     text.push_str(&commands_help::<crate::modules::userctl::Commands>());
-    if false {
-        // Not much of use for now.
-        text.push_str(&commands_help::<crate::modules::debates::Commands>());
-        // "..., and with ** are available only to bot technicians."
-    }
     text.push_str("\nCommands marked with * are available only to residents.");
+    // "..., and with ** are available only to bot technicians."
     bot.reply_message(&msg, text)
         .parse_mode(teloxide::types::ParseMode::Html)
         .await?;

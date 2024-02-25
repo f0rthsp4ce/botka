@@ -91,18 +91,6 @@ pub struct UserMac {
     pub mac: Sqlizer<macaddr::MacAddr6>,
 }
 
-#[derive(Insertable, Queryable, Selectable)]
-#[diesel(table_name = crate::schema::forwards)]
-pub struct Forward {
-    pub orig_chat_id: DbChatId,
-    pub orig_msg_id: DbMessageId,
-
-    pub backup_chat_id: DbChatId,
-    pub backup_msg_id: DbMessageId,
-
-    pub backup_text: String,
-}
-
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::tracked_polls)]
 pub struct TrackedPoll {
@@ -172,18 +160,12 @@ pub struct NewDashboardMessage<'a> {
 
 // Database option models
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Debate {
-    pub started_at: chrono::DateTime<chrono::Utc>,
-    pub description: String,
-}
 #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 pub struct NeedsLastPin {
     #[serde(flatten)]
     pub thread_id_pair: ThreadIdPair,
     pub message_id: MessageId,
 }
-config_option_def!(debate, Debate);
 config_option_def!(wikijs_update_state, crate::utils::WikiJsUpdateState);
 config_option_def!(needs_last_pin, NeedsLastPin);
 

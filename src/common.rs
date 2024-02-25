@@ -10,8 +10,6 @@ use diesel::{
     ExpressionMethods, QueryDsl, QueryResult, RunQueryDsl, SqliteConnection,
 };
 use itertools::Itertools;
-use teloxide::dispatching::dialogue::InMemStorage;
-use teloxide::prelude::Dialogue;
 use teloxide::requests::Requester;
 use teloxide::types::{Me, Message, StickerKind, User, UserId};
 use teloxide::utils::command::BotCommands;
@@ -25,15 +23,6 @@ use crate::utils::{BotExt, GENERAL_THREAD_ID};
 /// Wrapper around [`teloxide::dispatching::UpdateHandler`] to be used in this
 /// crate.
 pub type UpdateHandler = teloxide::dispatching::UpdateHandler<anyhow::Error>;
-
-#[derive(Clone, Default)]
-pub enum State {
-    #[default]
-    Start,
-    Forward,
-}
-
-pub type MyDialogue = Dialogue<State, InMemStorage<State>>;
 
 /// Access rules describing where and who can execute a command.
 #[derive(Eq, PartialEq, Debug)]
