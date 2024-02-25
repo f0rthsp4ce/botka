@@ -111,8 +111,16 @@ async fn handle_request(
 
     let out_request: reqwest::Request =
         Request::from_parts(in_request_parts, in_request_body).try_into()?;
-    let out_response =
-        proxy.client.execute(out_request).await.expect("request error");
+    let out_response = match proxy.client.execute(out_request).await {
+        Ok(response) => response,
+        Err(error) => {
+            log::error!("{}", error.without_url());
+            return Ok(Response::builder()
+                .status(500)
+                .body(Body::from("Internal Server Error"))
+                .unwrap());
+        }
+    };
 
     // Convert the reqwest Response to hyper Response
     let out_response_status = out_response.status();
