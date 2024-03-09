@@ -6,6 +6,7 @@
 //!
 //! [`telegram.chats.needs`]: crate::config::TelegramChats::needs
 
+use std::borrow::Cow;
 use std::fmt::Write;
 use std::sync::Arc;
 
@@ -40,6 +41,10 @@ pub enum Commands {
     #[command(description = "show shopping list.")]
     #[custom(resident = true)]
     Needs,
+
+    #[command(description = "add an item to the shopping list.")]
+    #[custom(resident = true)]
+    Need(String),
 }
 
 pub fn message_handler() -> UpdateHandler {
@@ -62,43 +67,14 @@ async fn handle_message(
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
-    let Some(user) = &msg.from else {
-        return Ok(());
-    };
     let Some(text) = msg.text() else {
         return Ok(());
     };
-
     let list_items = text
         .lines()
         .filter_map(|l| Some(l.trim().strip_prefix('-')?.trim()))
         .collect_vec();
-    if list_items.is_empty() {
-        return Ok(());
-    }
-    let list_items = replace_urls_with_titles(&list_items).await;
-
-    diesel::insert_into(schema::needed_items::table)
-        .values(
-            list_items
-                .iter()
-                .map(|item| models::NewNeededItem {
-                    request_chat_id: msg.chat.id.into(),
-                    request_message_id: msg.id.into(),
-                    request_user_id: user.id.into(),
-                    pinned_chat_id: msg.chat.id.into(),
-                    pinned_message_id: msg.id.into(),
-                    buyer_user_id: None,
-                    item,
-                })
-                .collect_vec(),
-        )
-        .execute(&mut *env.conn())?;
-
-    bot.pin_chat_message(msg.chat.id, msg.id).await?;
-
-    update_pinned_needs_message(&bot, &env, None).await?;
-
+    add_items(&bot, &env, &list_items, &msg).await?;
     Ok(())
 }
 
@@ -110,6 +86,7 @@ async fn handle_command(
 ) -> Result<()> {
     match command {
         Commands::Needs => command_needs(bot, env, msg).await,
+        Commands::Need(item) => add_items(&bot, &env, &[&item], &msg).await,
     }
 }
 
@@ -143,6 +120,58 @@ async fn command_needs(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
             &models::NeedsLastPin { thread_id_pair, message_id: msg.id },
         )?;
     }
+
+    Ok(())
+}
+
+async fn add_items(
+    bot: &Bot,
+    env: &BotEnv,
+    list_items: &[&str],
+    msg: &Message,
+) -> Result<()> {
+    let Some(user) = &msg.from else {
+        return Ok(());
+    };
+    if list_items.is_empty() {
+        return Ok(());
+    }
+    let list_items = replace_urls_with_titles(list_items).await;
+
+    let pinned_message = if env.config.telegram.chats.needs.has_message(msg) {
+        Cow::Borrowed(msg)
+    } else {
+        Cow::Owned(
+            bot.forward_message(
+                env.config.telegram.chats.needs.chat,
+                msg.chat.id,
+                msg.id,
+            )
+            .message_thread_id(env.config.telegram.chats.needs.thread)
+            .await?,
+        )
+    };
+
+    diesel::insert_into(schema::needed_items::table)
+        .values(
+            list_items
+                .iter()
+                .map(|item| models::NewNeededItem {
+                    request_chat_id: msg.chat.id.into(),
+                    request_message_id: msg.id.into(),
+                    request_user_id: user.id.into(),
+                    pinned_chat_id: pinned_message.chat.id.into(),
+                    pinned_message_id: pinned_message.id.into(),
+                    buyer_user_id: None,
+                    item,
+                })
+                .collect_vec(),
+        )
+        .execute(&mut *env.conn())?;
+
+    bot.pin_chat_message(pinned_message.chat.id, pinned_message.id).await?;
+
+    update_pinned_needs_message(bot, env, None).await?;
 
     Ok(())
 }
@@ -197,11 +226,7 @@ fn command_needs_message_and_buttons(
                     .eq(schema::needed_items::columns::request_user_id)),
             )
             .filter(schema::needed_items::columns::buyer_user_id.is_null())
-            .order_by((
-                schema::needed_items::columns::request_chat_id,
-                schema::needed_items::columns::request_message_id,
-                schema::needed_items::columns::rowid,
-            ))
+            .order_by(schema::needed_items::columns::rowid)
             .select((
                 schema::needed_items::all_columns,
                 schema::tg_users::all_columns.nullable(),
@@ -220,6 +245,16 @@ fn command_needs_message_and_buttons(
             (i.request_chat_id, i.request_message_id)
         })
     {
+        let is_public = item.request_chat_id
+            == env.config.telegram.chats.needs.chat.into()
+            || env
+                .config
+                .telegram
+                .chats
+                .resident_owned
+                .iter()
+                .any(|chat| item.request_chat_id == chat.id.into());
+
         let mut button_text = String::new();
         write!(text, "{}", idx1 + 1).unwrap();
         write!(button_text, "{}", idx1 + 1).unwrap();
@@ -229,10 +264,15 @@ fn command_needs_message_and_buttons(
         }
 
         write!(text, ". {} (", html::escape(&item.item)).unwrap();
+
         write_message_link(
             &mut text,
-            item.request_chat_id,
-            item.request_message_id,
+            if is_public { item.request_chat_id } else { item.pinned_chat_id },
+            if is_public {
+                item.request_message_id
+            } else {
+                item.pinned_message_id
+            },
         );
         write!(text, "by ").unwrap();
         format_user(&mut text, item.request_user_id, &user, false);
