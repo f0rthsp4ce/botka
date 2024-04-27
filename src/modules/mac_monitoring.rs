@@ -1,19 +1,20 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use diesel::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl,
     RunQueryDsl,
 };
-use teloxide::{payloads::SendMessageSetters, requests::Requester, Bot};
+use teloxide::payloads::SendMessageSetters;
+use teloxide::requests::Requester;
+use teloxide::Bot;
 use tokio::time::sleep;
 
-use crate::{
-    common::{format_users, BotEnv},
-    db::DbUserId,
-    models, schema,
-    utils::mikrotik::get_leases,
-};
+use crate::common::{format_users, BotEnv};
+use crate::db::DbUserId;
+use crate::utils::mikrotik::get_leases;
+use crate::{models, schema};
 
 pub async fn mac_monitoring(env: Arc<BotEnv>, bot: Arc<Bot>) -> Result<()> {
     let leases =

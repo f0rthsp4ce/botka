@@ -10,7 +10,6 @@ use diesel::{
     ExpressionMethods, QueryDsl, QueryResult, RunQueryDsl, SqliteConnection,
 };
 use itertools::Itertools;
-
 use teloxide::requests::Requester;
 use teloxide::types::{Me, Message, StickerKind, User, UserId};
 use teloxide::utils::command::BotCommands;

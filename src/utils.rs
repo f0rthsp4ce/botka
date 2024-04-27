@@ -4,11 +4,11 @@ mod diesel_json;
 mod dptree_ext;
 mod format_to;
 mod log_error;
+pub mod mikrotik;
 mod parsers;
 mod replace_urls;
 mod teloxide;
 mod wikijs;
-pub mod mikrotik;
 
 pub use diesel_json::Sqlizer;
 pub use dptree_ext::HandlerExt;
