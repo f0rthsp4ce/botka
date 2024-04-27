@@ -13,6 +13,7 @@ use tokio::time::sleep;
 
 use crate::common::{format_users, BotEnv};
 use crate::db::DbUserId;
+use crate::metrics::update_resident_online;
 use crate::utils::mikrotik::get_leases;
 use crate::{models, schema};
 
@@ -64,6 +65,13 @@ pub async fn mac_monitoring(env: Arc<BotEnv>, bot: Arc<Bot>) -> Result<()> {
                 deleted_users.push((prev_tg_id, prev_user.clone())); // Add to deleted_users if not found in data
             }
         }
+    }
+
+    for &(tg_id, _) in &added_users {
+        update_resident_online(tg_id.into(), true);
+    }
+    for &(tg_id, _) in &deleted_users {
+        update_resident_online(tg_id.into(), false);
     }
 
     let mut text = String::new();

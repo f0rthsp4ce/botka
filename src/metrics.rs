@@ -1,4 +1,5 @@
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
+use teloxide::types::UserId;
 
 #[allow(clippy::module_name_repetitions)] // For conistency with other modules.
 pub fn register_metrics() {
@@ -10,6 +11,10 @@ pub fn register_metrics() {
     metrics::describe_gauge!(
         "botka_service_last_access_timestamp_seconds",
         "UNIX timestamp of the last access to the service."
+    );
+    metrics::describe_gauge!(
+        "botka_resident_online_status",
+        "Resident online status."
     );
 
     // Constant metrics
@@ -71,5 +76,13 @@ pub fn update_service(name: &'static str, success: bool) {
         std::time::UNIX_EPOCH.elapsed().unwrap_or_default().as_secs_f64(),
         "service" => name,
         "status" => if success { "success" } else { "failure" },
+    );
+}
+
+pub fn update_resident_online(id: UserId, online: bool) {
+    metrics::gauge!(
+        "botka_resident_online_status",
+        if online { 1.0 } else { 0.0 },
+        "resident" => id.to_string(),
     );
 }
