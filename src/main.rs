@@ -137,6 +137,8 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         log::info!("Running in passive mode");
     }
 
+    let active_macs = Arc::new(tokio::sync::RwLock::new(None));
+
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&format!(
             "sqlite://{DB_FILENAME}"
@@ -150,6 +152,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         ),
         config: Arc::new(config),
         config_path: config_fpath.into(),
+        active_macs,
     });
 
     let proxy_addr = tracing_proxy::start().await?;
@@ -214,6 +217,13 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         prometheus,
         cancel.clone(),
     )));
+
+    join_handles.push(tokio::spawn(
+        crate::modules::mac_monitoring::watch_loop(
+            Arc::clone(&bot_env),
+            bot.clone(),
+        ),
+    ));
 
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());
 

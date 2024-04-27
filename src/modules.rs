@@ -12,3 +12,4 @@ pub mod tg_scraper;
 pub mod updates;
 pub mod userctl;
 pub mod welcome;
+pub mod mac_monitoring;
