@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Check
+        run: |
+          nix develop --command just check
+          nix develop --command cargo fmt --check
+
+      - name: Check hashes.nix
+        run: |
+          sha256sum hashes.nix > /tmp/original_hashes
+          nix develop --command just hashes
+          sha256sum hashes.nix > /tmp/new_hashes
+          if diff /tmp/original_hashes /tmp/new_hashes >/dev/null; then
+            echo "OK! Files are the same."
+          else
+            echo "Error! Files differ."
+            echo "New content:"
+            cat hashes.nix
+            exit 1
+          fi
