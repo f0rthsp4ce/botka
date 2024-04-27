@@ -40,6 +40,9 @@ telegram:
     # Thread for the 'needs' module.
     needs: { chat: -1001234567890, thread: 123 }
 
+    # Thread for the 'mac_monitoring' module.
+    mac_monitoring: { chat: -1001234567890, thread: 456 }
+
     # List of chats considered as resident-owned. Used to print an admin table.
     resident_owned:
       - { id: -1001234567890, internal: true }
