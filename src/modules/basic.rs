@@ -6,7 +6,6 @@ use std::io::Write as _;
 use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use diesel::prelude::*;
@@ -214,42 +213,15 @@ async fn cmd_show_residents_timeline(bot: Bot, msg: Message) -> Result<()> {
 }
 
 async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
-    let leases = crate::utils::mikrotik::get_leases(
-        &env.reqwest_client,
-        &env.config.services.mikrotik,
-    )
-    .await;
-
     let mut text = String::new();
-    match leases {
-        Ok(leases) => {
-            let active_mac_addrs = leases
-                .into_iter()
-                .filter(|l| l.last_seen < Duration::from_secs(11 * 60))
-                .map(|l| l.mac_address)
-                .collect::<Vec<_>>();
-            let data: Vec<(DbUserId, Option<models::TgUser>)> =
-                schema::user_macs::table
-                    .left_join(
-                        schema::tg_users::table
-                            .on(schema::user_macs::tg_id
-                                .eq(schema::tg_users::id)),
-                    )
-                    .filter(schema::user_macs::mac.eq_any(&active_mac_addrs))
-                    .select((
-                        schema::user_macs::tg_id,
-                        schema::tg_users::all_columns.nullable(),
-                    ))
-                    .distinct()
-                    .load(&mut *env.conn())?;
-            writeln!(&mut text, "Currently in space: ").unwrap();
-            format_users(&mut text, data.iter().map(|(id, u)| (*id, u)));
-        }
-        Err(e) => {
-            log::error!("Failed to get leases: {e}");
-            writeln!(text, "Failed to get leases.").unwrap();
-        }
+
+    if let Some(data) = &*env.active_macs.read().await {
+        writeln!(&mut text, "Currently in space: ").unwrap();
+        format_users(&mut text, data.iter().map(|(id, u)| (*id, u)));
+    } else {
+        writeln!(&mut text, "No data collected yet.").unwrap();
     }
+
     bot.reply_message(&msg, text)
         .parse_mode(teloxide::types::ParseMode::Html)
         .disable_web_page_preview(true)

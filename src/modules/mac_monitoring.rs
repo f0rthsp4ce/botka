@@ -15,7 +15,7 @@ use crate::{
     utils::mikrotik::get_leases,
 };
 
-pub async fn mac_monitoring(env: Arc<BotEnv>, bot: Bot) -> Result<()> {
+pub async fn mac_monitoring(env: Arc<BotEnv>, bot: Arc<Bot>) -> Result<()> {
     let leases =
         get_leases(&env.reqwest_client, &env.config.services.mikrotik).await?;
 
@@ -84,9 +84,14 @@ pub async fn mac_monitoring(env: Arc<BotEnv>, bot: Bot) -> Result<()> {
     Ok(())
 }
 
-pub async fn watch_loop(env: Arc<BotEnv>, bot: Bot) {
+pub async fn watch_loop(env: Arc<BotEnv>, bot: Arc<Bot>) {
     loop {
-        if let Err(e) = mac_monitoring(Arc::<BotEnv>::clone(&env), bot.clone()).await {
+        if let Err(e) = mac_monitoring(
+            Arc::<BotEnv>::clone(&env),
+            Arc::<teloxide::Bot>::clone(&bot),
+        )
+        .await
+        {
             log::error!("Failed to get leases: {e}");
         };
         sleep(Duration::from_secs(60)).await;

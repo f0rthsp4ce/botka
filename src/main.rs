@@ -221,7 +221,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     join_handles.push(tokio::spawn(
         crate::modules::mac_monitoring::watch_loop(
             Arc::clone(&bot_env),
-            bot.clone(),
+            Arc::new(bot.clone()),
         ),
     ));
 
