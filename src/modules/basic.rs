@@ -214,37 +214,11 @@ async fn cmd_show_residents_timeline(bot: Bot, msg: Message) -> Result<()> {
 }
 
 async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
-    #[derive(serde::Deserialize, Debug)]
-    #[serde(rename_all = "kebab-case")]
-    struct Lease {
-        mac_address: String,
-        #[serde(deserialize_with = "crate::utils::deserealize_duration")]
-        last_seen: Duration,
-    }
-
-    let conf = &env.config.services.mikrotik;
-    let leases = async {
-        env.reqwest_client
-            .post(format!(
-                "https://{}/rest/ip/dhcp-server/lease/print",
-                conf.host
-            ))
-            .timeout(Duration::from_secs(5))
-            .basic_auth(&conf.username, Some(&conf.password))
-            .json(&serde_json::json!({
-                ".proplist": [
-                    "mac-address",
-                    "last-seen",
-                ]
-            }))
-            .send()
-            .await?
-            .json::<Vec<Lease>>()
-            .await
-    }
+    let leases = crate::utils::mikrotik::get_leases(
+        &env.reqwest_client,
+        &env.config.services.mikrotik,
+    )
     .await;
-
-    crate::metrics::update_service("mikrotik", leases.is_ok());
 
     let mut text = String::new();
     match leases {

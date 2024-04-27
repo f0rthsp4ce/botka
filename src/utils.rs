@@ -8,6 +8,7 @@ mod parsers;
 mod replace_urls;
 mod teloxide;
 mod wikijs;
+pub mod mikrotik;
 
 pub use diesel_json::Sqlizer;
 pub use dptree_ext::HandlerExt;
