@@ -39,6 +39,7 @@ pub struct TelegramChats {
     pub forward_pins: Vec<FowardPins>,
     pub needs: ThreadIdPair,
     pub mac_monitoring: ThreadIdPair,
+    pub ask_to_visit: ThreadIdPair,
     pub resident_owned: Vec<ResidentOwned>,
     pub wikijs_updates: ThreadIdPair,
 }

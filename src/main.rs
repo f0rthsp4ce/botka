@@ -180,6 +180,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::polls::message_handler())
                     .branch(modules::borrowed_items::command_handler())
                     .branch(modules::needs::message_handler())
+                    .branch(modules::ask_to_visit::message_handler())
                     .branch(modules::welcome::message_handler())
                     .endpoint(drop_endpoint),
             )
