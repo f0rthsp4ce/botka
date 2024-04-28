@@ -17,7 +17,7 @@ use crate::metrics::update_resident_online;
 use crate::utils::mikrotik::get_leases;
 use crate::{models, schema};
 
-pub async fn mac_monitoring(env: Arc<BotEnv>, bot: Arc<Bot>) -> Result<()> {
+async fn mac_monitoring(env: Arc<BotEnv>, bot: Arc<Bot>) -> Result<()> {
     let leases =
         get_leases(&env.reqwest_client, &env.config.services.mikrotik).await?;
 
