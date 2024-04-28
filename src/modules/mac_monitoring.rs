@@ -76,25 +76,30 @@ pub async fn mac_monitoring(env: Arc<BotEnv>, bot: Arc<Bot>) -> Result<()> {
 
     let mut text = String::new();
     if !deleted_users.is_empty() {
-        text.push_str("Left:\n");
+        text.push_str("Left space:\n");
         format_users(&mut text, deleted_users.iter().map(|(id, u)| (*id, u)));
     }
     if !added_users.is_empty() {
         if !text.is_empty() {
             text.push_str("\n\n");
         }
-        text.push_str("Joined:\n");
+        text.push_str("Joined space:\n");
         format_users(&mut text, added_users.iter().map(|(id, u)| (*id, u)));
     }
-    bot.send_message(env.config.telegram.chats.mac_monitoring.chat, text)
-        .message_thread_id(env.config.telegram.chats.mac_monitoring.thread)
-        .await?;
+    if !text.is_empty() {
+        bot.send_message(env.config.telegram.chats.mac_monitoring.chat, text)
+            .message_thread_id(env.config.telegram.chats.mac_monitoring.thread)
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .disable_web_page_preview(true)
+            .await?;
+    }
 
     Ok(())
 }
 
 pub async fn watch_loop(env: Arc<BotEnv>, bot: Arc<Bot>) {
     loop {
+        log::debug!("Executing mac_monitoring");
         if let Err(e) = mac_monitoring(
             Arc::<BotEnv>::clone(&env),
             Arc::<teloxide::Bot>::clone(&bot),
