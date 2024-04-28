@@ -67,7 +67,7 @@ async fn handle_message(
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
-    let Some(text) = msg.text() else {
+    let Some(text) = msg.text().or_else(|| msg.caption()) else {
         return Ok(());
     };
     let list_items = text
