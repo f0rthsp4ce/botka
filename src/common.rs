@@ -18,7 +18,6 @@ use teloxide::Bot;
 
 use crate::config::Config;
 use crate::db::DbUserId;
-use crate::models::TgUser;
 use crate::utils::{BotExt, GENERAL_THREAD_ID};
 
 /// Wrapper around [`teloxide::dispatching::UpdateHandler`] to be used in this
@@ -60,8 +59,6 @@ pub trait BotCommandsExtTrait: BotCommands {
     fn command_rules(&self) -> CommandAccessRules;
 }
 
-pub type TgUserVec = Vec<(DbUserId, Option<TgUser>)>;
-
 /// Bot environment: global state shared between all handlers.
 pub struct BotEnv {
     pub conn: Mutex<SqliteConnection>,
@@ -69,7 +66,6 @@ pub struct BotEnv {
     pub config_path: PathBuf,
     pub reqwest_client: reqwest::Client,
     pub openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
-    pub active_macs: Arc<tokio::sync::RwLock<Option<TgUserVec>>>,
 }
 
 impl BotEnv {

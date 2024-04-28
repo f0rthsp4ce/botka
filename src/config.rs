@@ -59,14 +59,14 @@ pub struct FowardPins {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Services {
-    pub mikrotik: Microtik,
+    pub mikrotik: Mikrotik,
     pub home_assistant: HomeAssistant,
     pub wikijs: WikiJs,
     pub openai: OpenAI,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Microtik {
+pub struct Mikrotik {
     pub host: String,
     pub username: String,
     pub password: String,

@@ -15,7 +15,9 @@ use teloxide::prelude::*;
 use teloxide::types::{InputFile, ThreadId};
 use teloxide::utils::command::BotCommands;
 use teloxide::utils::html;
+use tokio::sync::RwLock;
 
+use super::mac_monitoring::State;
 use crate::common::{
     filter_command, format_users, BotCommandsExt, BotCommandsExtTrait, BotEnv,
     TopicEmojis, UpdateHandler,
@@ -60,6 +62,7 @@ async fn start<'a>(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
+    mac_monitoring_state: Arc<RwLock<State>>,
     command: Commands,
 ) -> Result<()> {
     match command {
@@ -71,7 +74,9 @@ async fn start<'a>(
         Commands::ResidentsTimeline => {
             cmd_show_residents_timeline(bot, msg).await?;
         }
-        Commands::Status => cmd_status(bot, env, msg).await?,
+        Commands::Status => {
+            cmd_status(bot, env, msg, mac_monitoring_state).await?;
+        }
         Commands::Version => {
             bot.reply_message(&msg, crate::version()).await?;
         }
@@ -212,14 +217,31 @@ async fn cmd_show_residents_timeline(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
+async fn cmd_status(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+    state: Arc<RwLock<State>>,
+) -> Result<()> {
     let mut text = String::new();
 
-    if let Some(data) = &*env.active_macs.read().await {
+    if let Some(active_users) = (*state.read().await).active_users() {
+        let data: Vec<models::TgUser> = schema::tg_users::table
+            .filter(
+                schema::tg_users::id
+                    .eq_any(active_users.iter().map(|id| DbUserId::from(*id))),
+            )
+            .select(schema::tg_users::all_columns)
+            .load(&mut *env.conn())?;
+
         writeln!(&mut text, "Currently in space: ").unwrap();
-        format_users(&mut text, data.iter().map(|(id, u)| (*id, u)));
+        format_users(&mut text, data.iter().map(|u| (u.id, u)));
     } else {
-        writeln!(&mut text, "No data collected yet.").unwrap();
+        writeln!(
+            &mut text,
+            "No data collected yet. Probably Mikrotik password is incorrect."
+        )
+        .unwrap();
     }
 
     bot.reply_message(&msg, text)

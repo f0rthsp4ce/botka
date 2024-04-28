@@ -37,6 +37,7 @@ use teloxide::payloads::AnswerCallbackQuerySetters;
 use teloxide::requests::Requester;
 use teloxide::types::{CallbackQuery, Message, Update};
 use teloxide::Bot;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use utils::HandlerExt as _;
 
@@ -139,8 +140,6 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         log::info!("Running in passive mode");
     }
 
-    let active_macs = Arc::new(tokio::sync::RwLock::new(None));
-
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&format!(
             "sqlite://{DB_FILENAME}"
@@ -154,11 +153,12 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         ),
         config: Arc::new(config),
         config_path: config_fpath.into(),
-        active_macs,
     });
 
     let proxy_addr = tracing_proxy::start().await?;
     let bot = Bot::new(&bot_env.config.telegram.token).set_api_url(proxy_addr);
+
+    let mac_monitoring_state = modules::mac_monitoring::state();
 
     let mut dispatcher = Dispatcher::builder(
         bot.clone(),
@@ -197,6 +197,9 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     .dependencies(dptree::deps![
         modules::forward_topic_pins::state(),
         modules::welcome::state(),
+        Arc::<RwLock<modules::mac_monitoring::State>>::clone(
+            &mac_monitoring_state
+        ),
         Arc::clone(&bot_env)
     ])
     .build();
@@ -221,11 +224,10 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         cancel.clone(),
     )));
 
-    join_handles.push(tokio::spawn(
-        crate::modules::mac_monitoring::watch_loop(
-            Arc::clone(&bot_env),
-            Arc::new(bot.clone()),
-        ),
+    tokio::spawn(crate::modules::mac_monitoring::watch_loop(
+        Arc::clone(&bot_env),
+        mac_monitoring_state,
+        Arc::new(bot.clone()),
     ));
 
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());

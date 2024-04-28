@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::config::Microtik;
+use crate::config::Mikrotik;
 
 #[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
@@ -12,7 +12,7 @@ pub struct Lease {
 
 pub async fn get_leases(
     reqwest_client: &reqwest::Client,
-    conf: &Microtik,
+    conf: &Mikrotik,
 ) -> Result<Vec<Lease>, reqwest::Error> {
     let leases = reqwest_client
         .post(format!("https://{}/rest/ip/dhcp-server/lease/print", conf.host))

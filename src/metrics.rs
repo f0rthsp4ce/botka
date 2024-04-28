@@ -13,8 +13,8 @@ pub fn register_metrics() {
         "UNIX timestamp of the last access to the service."
     );
     metrics::describe_gauge!(
-        "botka_resident_online_status",
-        "Resident online status."
+        "botka_user_online_status",
+        "User online (in space) status."
     );
 
     // Constant metrics
@@ -79,10 +79,10 @@ pub fn update_service(name: &'static str, success: bool) {
     );
 }
 
-pub fn update_resident_online(id: UserId, online: bool) {
+pub fn update_user_online(id: UserId, online: bool) {
     metrics::gauge!(
-        "botka_resident_online_status",
+        "botka_user_online_status",
         if online { 1.0 } else { 0.0 },
-        "resident" => id.to_string(),
+        "tg_id" => id.to_string(),
     );
 }
