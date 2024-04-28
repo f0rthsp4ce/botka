@@ -1,3 +1,5 @@
+/*.local
+/.direnv
 /local
 /residents-timeline/dist
 /target
