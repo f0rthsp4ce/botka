@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 
 use diesel::result::Error::DeserializationError;
 use diesel::{
@@ -109,6 +110,19 @@ macro_rules! make_db_newtype {
         )]
         #[doc = "A newtype wrapper for a Telegram type to be stored in the database."]
         pub struct $name($inner);
+
+        impl Deref for $name {
+            type Target = $inner;
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl DerefMut for $name {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
     };
 }
 
