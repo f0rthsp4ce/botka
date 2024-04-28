@@ -43,6 +43,9 @@ telegram:
     # Thread for the 'mac_monitoring' module.
     mac_monitoring: { chat: -1001234567890, thread: 456 }
 
+    # Thread for the 'ask_to_visit' module.
+    ask_to_visit: { chat: -1001234567890, thread: 789 }
+
     # List of chats considered as resident-owned. Used to print an admin table.
     resident_owned:
       - { id: -1001234567890, internal: true }
