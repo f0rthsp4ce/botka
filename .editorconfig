@@ -11,5 +11,5 @@ indent_size = 2
 [*.rs]
 indent_size = 4
 
-[Makefile]
+[Justfile]
 indent_style = tab
