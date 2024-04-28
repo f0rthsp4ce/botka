@@ -40,12 +40,7 @@ async fn mac_monitoring(env: Arc<BotEnv>, bot: Arc<Bot>) -> Result<()> {
             .distinct()
             .load(&mut *env.conn())?;
 
-    let prev_data;
-    {
-        let mut active_macs_guard = env.active_macs.write().await;
-        prev_data = active_macs_guard.take();
-        *active_macs_guard = Some(data.clone());
-    }
+    let prev_data = env.active_macs.write().await.replace(data.clone());
 
     let mut deleted_users: Vec<(DbUserId, Option<models::TgUser>)> = Vec::new();
     let mut added_users: Vec<(DbUserId, Option<models::TgUser>)> = Vec::new();
