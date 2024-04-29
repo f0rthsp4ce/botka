@@ -139,8 +139,8 @@ pub async fn watch_loop(
             &env.config.services.mikrotik,
             &env.config.telegram.chats.mac_monitoring,
             &env.conn,
-            Arc::<RwLock<State>>::clone(&state),
-            Arc::<teloxide::Bot>::clone(&bot),
+            Arc::clone(&state),
+            Arc::clone(&bot),
         )
         .await
         {

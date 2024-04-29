@@ -37,7 +37,6 @@ use teloxide::payloads::AnswerCallbackQuerySetters;
 use teloxide::requests::Requester;
 use teloxide::types::{CallbackQuery, Message, Update};
 use teloxide::Bot;
-use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use utils::HandlerExt as _;
 
@@ -197,9 +196,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     .dependencies(dptree::deps![
         modules::forward_topic_pins::state(),
         modules::welcome::state(),
-        Arc::<RwLock<modules::mac_monitoring::State>>::clone(
-            &mac_monitoring_state
-        ),
+        Arc::clone(&mac_monitoring_state),
         Arc::clone(&bot_env)
     ])
     .build();
