@@ -38,6 +38,8 @@ pub struct TelegramChats {
     pub forward_channel: ChatId,
     pub forward_pins: Vec<FowardPins>,
     pub needs: ThreadIdPair,
+    pub mac_monitoring: ThreadIdPair,
+    pub ask_to_visit: ThreadIdPair,
     pub resident_owned: Vec<ResidentOwned>,
     pub wikijs_updates: ThreadIdPair,
 }
@@ -57,14 +59,14 @@ pub struct FowardPins {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Services {
-    pub mikrotik: Microtik,
+    pub mikrotik: Mikrotik,
     pub home_assistant: HomeAssistant,
     pub wikijs: WikiJs,
     pub openai: OpenAI,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Microtik {
+pub struct Mikrotik {
     pub host: String,
     pub username: String,
     pub password: String,

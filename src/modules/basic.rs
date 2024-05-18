@@ -6,7 +6,6 @@ use std::io::Write as _;
 use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use diesel::prelude::*;
@@ -16,7 +15,9 @@ use teloxide::prelude::*;
 use teloxide::types::{InputFile, ThreadId};
 use teloxide::utils::command::BotCommands;
 use teloxide::utils::html;
+use tokio::sync::RwLock;
 
+use super::mac_monitoring::State;
 use crate::common::{
     filter_command, format_users, BotCommandsExt, BotCommandsExtTrait, BotEnv,
     TopicEmojis, UpdateHandler,
@@ -61,6 +62,7 @@ async fn start<'a>(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
+    mac_monitoring_state: Arc<RwLock<State>>,
     command: Commands,
 ) -> Result<()> {
     match command {
@@ -72,7 +74,9 @@ async fn start<'a>(
         Commands::ResidentsTimeline => {
             cmd_show_residents_timeline(bot, msg).await?;
         }
-        Commands::Status => cmd_status(bot, env, msg).await?,
+        Commands::Status => {
+            cmd_status(bot, env, msg, mac_monitoring_state).await?;
+        }
         Commands::Version => {
             bot.reply_message(&msg, crate::version()).await?;
         }
@@ -213,69 +217,33 @@ async fn cmd_show_residents_timeline(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_status(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
-    #[derive(serde::Deserialize, Debug)]
-    #[serde(rename_all = "kebab-case")]
-    struct Lease {
-        mac_address: String,
-        #[serde(deserialize_with = "crate::utils::deserealize_duration")]
-        last_seen: Duration,
-    }
-
-    let conf = &env.config.services.mikrotik;
-    let leases = async {
-        env.reqwest_client
-            .post(format!(
-                "https://{}/rest/ip/dhcp-server/lease/print",
-                conf.host
-            ))
-            .timeout(Duration::from_secs(5))
-            .basic_auth(&conf.username, Some(&conf.password))
-            .json(&serde_json::json!({
-                ".proplist": [
-                    "mac-address",
-                    "last-seen",
-                ]
-            }))
-            .send()
-            .await?
-            .json::<Vec<Lease>>()
-            .await
-    }
-    .await;
-
-    crate::metrics::update_service("mikrotik", leases.is_ok());
-
+async fn cmd_status(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+    state: Arc<RwLock<State>>,
+) -> Result<()> {
     let mut text = String::new();
-    match leases {
-        Ok(leases) => {
-            let active_mac_addrs = leases
-                .into_iter()
-                .filter(|l| l.last_seen < Duration::from_secs(11 * 60))
-                .map(|l| l.mac_address)
-                .collect::<Vec<_>>();
-            let data: Vec<(DbUserId, Option<models::TgUser>)> =
-                schema::user_macs::table
-                    .left_join(
-                        schema::tg_users::table
-                            .on(schema::user_macs::tg_id
-                                .eq(schema::tg_users::id)),
-                    )
-                    .filter(schema::user_macs::mac.eq_any(&active_mac_addrs))
-                    .select((
-                        schema::user_macs::tg_id,
-                        schema::tg_users::all_columns.nullable(),
-                    ))
-                    .distinct()
-                    .load(&mut *env.conn())?;
-            writeln!(&mut text, "Currently in space: ").unwrap();
-            format_users(&mut text, data.iter().map(|(id, u)| (*id, u)));
-        }
-        Err(e) => {
-            log::error!("Failed to get leases: {e}");
-            writeln!(text, "Failed to get leases.").unwrap();
-        }
+
+    if let Some(active_users) = (*state.read().await).active_users() {
+        let data: Vec<models::TgUser> = schema::tg_users::table
+            .filter(
+                schema::tg_users::id
+                    .eq_any(active_users.iter().map(|id| DbUserId::from(*id))),
+            )
+            .select(schema::tg_users::all_columns)
+            .load(&mut *env.conn())?;
+
+        writeln!(&mut text, "Currently in space: ").unwrap();
+        format_users(&mut text, data.iter().map(|u| (u.id, u)));
+    } else {
+        writeln!(
+            &mut text,
+            "No data collected yet. Probably Mikrotik password is incorrect."
+        )
+        .unwrap();
     }
+
     bot.reply_message(&msg, text)
         .parse_mode(teloxide::types::ParseMode::Html)
         .disable_web_page_preview(true)

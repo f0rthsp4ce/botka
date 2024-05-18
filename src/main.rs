@@ -105,7 +105,9 @@ struct SubCommandScrape {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    std::env::set_var("RUST_LOG", "info");
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
     pretty_env_logger::init();
     let args: Args = argh::from_env();
     VERSION
@@ -155,6 +157,8 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     let proxy_addr = tracing_proxy::start().await?;
     let bot = Bot::new(&bot_env.config.telegram.token).set_api_url(proxy_addr);
 
+    let mac_monitoring_state = modules::mac_monitoring::state();
+
     let mut dispatcher = Dispatcher::builder(
         bot.clone(),
         dptree::entry()
@@ -175,6 +179,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::polls::message_handler())
                     .branch(modules::borrowed_items::command_handler())
                     .branch(modules::needs::message_handler())
+                    .branch(modules::ask_to_visit::message_handler())
                     .branch(modules::welcome::message_handler())
                     .endpoint(drop_endpoint),
             )
@@ -191,6 +196,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     .dependencies(dptree::deps![
         modules::forward_topic_pins::state(),
         modules::welcome::state(),
+        Arc::clone(&mac_monitoring_state),
         Arc::clone(&bot_env)
     ])
     .build();
@@ -214,6 +220,12 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         prometheus,
         cancel.clone(),
     )));
+
+    tokio::spawn(crate::modules::mac_monitoring::watch_loop(
+        Arc::clone(&bot_env),
+        mac_monitoring_state,
+        Arc::new(bot.clone()),
+    ));
 
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());
 

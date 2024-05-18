@@ -4,6 +4,7 @@ mod diesel_json;
 mod dptree_ext;
 mod format_to;
 mod log_error;
+pub mod mikrotik;
 mod parsers;
 mod replace_urls;
 mod teloxide;
