@@ -7,6 +7,7 @@ mod log_error;
 pub mod mikrotik;
 mod parsers;
 mod replace_urls;
+mod status_change;
 mod teloxide;
 mod wikijs;
 
@@ -18,6 +19,7 @@ pub use parsers::{
     deserealize_duration, parse_tg_thread_link, parse_tgapi_method,
 };
 pub use replace_urls::replace_urls_with_titles;
+pub use status_change::StatusChangeDetector;
 pub use wikijs::{get_wikijs_page, get_wikijs_updates, WikiJsUpdateState};
 
 pub use self::teloxide::{

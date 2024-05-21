@@ -13,10 +13,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::common::BotEnv;
 use crate::models;
-use crate::utils::{get_wikijs_updates, ResultExt as _};
+use crate::utils::{get_wikijs_updates, ResultExt as _, StatusChangeDetector};
 
 pub async fn task(env: Arc<BotEnv>, bot: Bot, shutdown: CancellationToken) {
     let mut initial = true;
+    let mut ed = StatusChangeDetector::new();
     loop {
         select! {
             () = shutdown.cancelled() => {
@@ -25,13 +26,9 @@ pub async fn task(env: Arc<BotEnv>, bot: Bot, shutdown: CancellationToken) {
             () = sleep(Duration::from_secs(60)) => {}
         }
 
-        match check_wikijs_updates(&env, &bot, initial).await {
-            Ok(()) => crate::metrics::update_service("wikijs", true),
-            Err(e) => {
-                crate::metrics::update_service("wikijs", false);
-                log::error!("check_wikijs_updates: {e}");
-            }
-        }
+        let res = check_wikijs_updates(&env, &bot, initial).await;
+        crate::metrics::update_service("wikijs", res.is_ok());
+        ed.log_on_change("Wiki.js", res);
 
         initial = false;
     }
