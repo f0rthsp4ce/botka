@@ -45,7 +45,7 @@ async fn mac_monitoring(
 
     let active_mac_addrs = leases
         .into_iter()
-        .filter(|l| l.last_seen < Duration::from_secs(11 * 60))
+        .filter(|l| l.last_seen < Duration::from_secs(20 * 60))
         .map(|l| l.mac_address)
         .collect::<Vec<_>>();
 
