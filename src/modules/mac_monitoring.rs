@@ -62,8 +62,8 @@ async fn mac_monitoring(
     let mut deleted_users: HashSet<UserId> = HashSet::new();
     let mut added_users: HashSet<UserId> = HashSet::new();
     if let Some(prev_data) = prev_data {
-        deleted_users = data.difference(&prev_data).copied().collect();
-        added_users = prev_data.difference(&data).copied().collect();
+        added_users = data.difference(&prev_data).copied().collect();
+        deleted_users = prev_data.difference(&data).copied().collect();
     }
 
     for tg_id in &added_users {
