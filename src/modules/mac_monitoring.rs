@@ -39,7 +39,7 @@ async fn mac_monitoring(
     mac_monitoring_thread: &ThreadIdPair,
     conn: &Mutex<SqliteConnection>,
     state: Arc<RwLock<State>>,
-    bot: Arc<Bot>,
+    bot: &Bot,
 ) -> Result<()> {
     let leases = get_leases(reqwest_client, mikrotik_conf).await?;
 
@@ -127,11 +127,7 @@ async fn mac_monitoring(
     Ok(())
 }
 
-pub async fn watch_loop(
-    env: Arc<BotEnv>,
-    state: Arc<RwLock<State>>,
-    bot: Arc<Bot>,
-) {
+pub async fn watch_loop(env: Arc<BotEnv>, state: Arc<RwLock<State>>, bot: Bot) {
     loop {
         log::debug!("Executing mac_monitoring");
         if let Err(e) = mac_monitoring(
@@ -140,7 +136,7 @@ pub async fn watch_loop(
             &env.config.telegram.chats.mac_monitoring,
             &env.conn,
             Arc::clone(&state),
-            Arc::clone(&bot),
+            &bot,
         )
         .await
         {
