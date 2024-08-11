@@ -94,6 +94,11 @@ services:
     # Use stub logic instead of OpenAI API. Useful for local testing.
     disable: false
 
+  # Racovina camera configuration.
+  racovina_cam:
+    # URL to the camera image.
+    url: http://espcam-1.lo.f0rth.space:8081/
+
   # Vortex of Doom camera configuration.
   vortex_of_doom_cam:
     # URL to the camera image.

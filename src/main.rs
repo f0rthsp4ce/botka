@@ -189,6 +189,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::needs::message_handler())
                     .branch(modules::ask_to_visit::message_handler())
                     .branch(modules::welcome::message_handler())
+                    .branch(modules::camera::command_handler())
                     .endpoint(drop_endpoint),
             )
             .branch(

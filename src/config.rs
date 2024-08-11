@@ -80,6 +80,7 @@ pub struct Services {
     pub wikijs: WikiJs,
     pub openai: OpenAI,
     pub vortex_of_doom_cam: EspCam,
+    pub racovina_cam: EspCam,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
