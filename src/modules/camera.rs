@@ -1,6 +1,5 @@
 //! Commands related to cameras.
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -9,42 +8,22 @@ use teloxide::prelude::*;
 use teloxide::utils::command::BotCommands;
 
 use crate::common::{filter_command, BotCommandsExt, BotEnv, UpdateHandler};
-use crate::config::{Config, EspCam};
 use crate::utils::{read_camera_image, BotExt};
 
-#[derive(Clone)]
-enum CameraId {
-    VortexOfDoom,
+enum Id {
     Racovina,
-}
-
-impl CameraId {
-    const fn get_config<'a>(&self, config: &'a Config) -> &'a EspCam {
-        match self {
-            Self::VortexOfDoom => &config.services.vortex_of_doom_cam,
-            Self::Racovina => &config.services.racovina_cam,
-        }
-    }
-}
-
-impl FromStr for CameraId {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "vortex_of_doom" => Ok(Self::VortexOfDoom),
-            "racovina" => Ok(Self::Racovina),
-            _ => Err(anyhow::anyhow!("unknown camera id")),
-        }
-    }
+    Vortex,
 }
 
 #[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
-enum Commands {
-    #[command(description = "show camera image.")]
+pub enum Commands {
+    #[command(description = "show racovina camera image.")]
     #[custom(in_resident_chat = true)]
-    Camera(CameraId),
+    Racovina,
+    #[command(description = "show vortex camera image.")]
+    #[custom(in_resident_chat = true)]
+    Vortex,
 }
 
 pub fn command_handler() -> UpdateHandler {
@@ -58,7 +37,8 @@ async fn start<'a>(
     command: Commands,
 ) -> Result<()> {
     match command {
-        Commands::Camera(camera_id) => camera(bot, env, msg, camera_id).await?,
+        Commands::Racovina => camera(bot, env, msg, Id::Racovina).await?,
+        Commands::Vortex => camera(bot, env, msg, Id::Vortex).await?,
     }
     Ok(())
 }
@@ -67,11 +47,16 @@ async fn camera(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-    camera_id: CameraId,
+    camera_id: Id,
 ) -> Result<()> {
+    let camera_config = match camera_id {
+        Id::Racovina => &env.config.services.racovina_cam,
+        Id::Vortex => &env.config.services.vortex_of_doom_cam,
+    };
+
     let image = match read_camera_image(
         env.reqwest_client.clone(),
-        camera_id.get_config(&env.config),
+        camera_config,
     )
     .await
     {
