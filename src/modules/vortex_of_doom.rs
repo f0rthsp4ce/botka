@@ -37,7 +37,7 @@ async fn vortex_of_doom_internal(
 
         let image = read_camera_image(client.clone(), camera_config)
             .await
-            .log_ok("failed to fetch espcam image");
+            .log_ok(module_path!(), "failed to fetch espcam image");
 
         let mut text = "It's vortex of doom time! Please move the boxes, and throw away the last one and send a picture.".to_string();
         if let Some(additional_text) = &chat_config.additional_text {
@@ -74,5 +74,5 @@ pub async fn vortex_of_doom(
         &config.services.vortex_of_doom_cam,
     )
     .await
-    .log_error("Vortex of doom error");
+    .log_error(module_path!(), "Vortex of doom error");
 }

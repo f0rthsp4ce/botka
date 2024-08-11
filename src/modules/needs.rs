@@ -98,7 +98,10 @@ async fn command_needs(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
             if pin.thread_id_pair == thread_pair {
                 bot.delete_message(pin.thread_id_pair.chat, pin.message_id)
                     .await
-                    .log_error("Failed to delete old pinned message");
+                    .log_error(
+                        module_path!(),
+                        "Failed to delete old pinned message",
+                    );
             }
         }
     }
@@ -212,7 +215,7 @@ async fn update_pinned_needs_message(
     }
     edit_list_message(bot, env, pin.thread_id_pair.chat, pin.message_id)
         .await
-        .log_error("Cannot edit last pin");
+        .log_error(module_path!(), "Cannot edit last pin");
     Ok(())
 }
 
@@ -396,12 +399,12 @@ async fn handle_callback_bought(
         InlineKeyboardButton::callback("Undo", format!("n:undo:{rowid_}")),
     ]]))
     .await
-    .log_error("Cannot send message to needs thread");
+    .log_error(module_path!(), "Cannot send message to needs thread");
 
     if let Some(ref message) = callback.message {
         edit_list_message(&bot, &env, message.chat.id, message.id)
             .await
-            .log_error("Cannot edit callback message");
+            .log_error(module_path!(), "Cannot edit callback message");
     }
     update_pinned_needs_message(&bot, &env, callback.message.as_ref()).await?;
 
@@ -460,7 +463,7 @@ async fn handle_callback_undo(
 
     update_pinned_needs_message(&bot, &env, None)
         .await
-        .log_error("update pinned needs message");
+        .log_error(module_path!(), "update pinned needs message");
 
     if was_all_bought {
         bot.pin_chat_message(
@@ -468,7 +471,7 @@ async fn handle_callback_undo(
             item.pinned_message_id.into(),
         )
         .await
-        .log_error("pin chat message");
+        .log_error(module_path!(), "pin chat message");
     }
 
     if let Some(cb_message) = callback.message {
