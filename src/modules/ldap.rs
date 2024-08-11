@@ -28,17 +28,17 @@ const PASSWORD_GENERATOR: PasswordGenerator = PasswordGenerator {
 #[command(rename_rule = "snake_case")]
 pub enum Commands {
     #[command(description = "Register in LDAP.")]
-    #[custom(in_private = true, resident = true)]
+    #[custom(in_group = false, resident = true)]
     LdapRegister(String),
     #[command(description = "Reset LDAP password.")]
-    #[custom(in_private = true, resident = true)]
+    #[custom(in_group = false, resident = true)]
     LdapResetPassword,
     #[command(description = "Update LDAP settings.")]
-    #[custom(in_private = true, resident = true)]
+    #[custom(in_group = false, resident = true)]
     LdapUpdate(String),
-    #[command(description = "Show your LDAP groups.")]
-    #[custom(in_private = true, resident = true)]
-    LdapGroups,
+    // #[command(description = "Show your LDAP groups.")]
+    // #[custom(in_group = false, resident = true)]
+    // LdapGroups,
 }
 
 /// Control personal configuration.
@@ -87,7 +87,7 @@ async fn start<'a>(
             ldap_reset_password(bot, env, msg).await?;
         }
         Commands::LdapUpdate(args) => ldap_update(bot, env, msg, &args).await?,
-        Commands::LdapGroups => ldap_groups(bot, env, msg).await?,
+        // Commands::LdapGroups => ldap_groups(bot, env, msg).await?,
     }
     Ok(())
 }

@@ -297,7 +297,8 @@ impl Default for Sha512PasswordHash {
 impl PasswordHash for Sha512PasswordHash {
     fn hash_password(&self, password: &str) -> String {
         use sha_crypt::{sha512_simple, Sha512Params};
-        let params = Sha512Params::new(10_000).expect("failed to create sha512 hashing params");
+        let params = Sha512Params::new(10_000)
+            .expect("failed to create sha512 hashing params");
         let hashed_password =
             sha512_simple(password, &params).expect("failed to hash password");
         format!("{{CRYPT}}{hashed_password}")
