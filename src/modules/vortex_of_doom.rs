@@ -44,20 +44,20 @@ async fn vortex_of_doom_internal(
             text.push_str("\n\n");
             text.push_str(additional_text);
         }
-        match image {
-            Some(image) => {
-                bot.send_photo(chat_config.chat.chat, image)
-                    .caption(&text)
-                    .message_thread_id(chat_config.chat.thread)
-                    .parse_mode(teloxide::types::ParseMode::Html)
-                    .await?;
-            }
-            None => {
-                bot.send_message(chat_config.chat.chat, &text)
-                    .message_thread_id(chat_config.chat.thread)
-                    .parse_mode(teloxide::types::ParseMode::Html)
-                    .await?;
-            }
+        if let Some(image) = image {
+            bot.send_photo(chat_config.chat.chat, image)
+                .caption(&text)
+                .message_thread_id(chat_config.chat.thread)
+                .parse_mode(teloxide::types::ParseMode::Html)
+                .await?;
+        } else {
+            text.push_str(
+                "\n\nFailed to fetch camera image, please check the logs.",
+            );
+            bot.send_message(chat_config.chat.chat, &text)
+                .message_thread_id(chat_config.chat.thread)
+                .parse_mode(teloxide::types::ParseMode::Html)
+                .await?;
         }
     }
 }
