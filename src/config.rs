@@ -112,7 +112,7 @@ pub struct OpenAI {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EspCam {
-    pub address: Url,
+    pub url: Url,
 }
 
 #[cfg(test)]
