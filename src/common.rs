@@ -36,11 +36,19 @@ pub struct CommandAccessRules {
     pub in_private: bool,
     /// Allow users to execute this command in group chat
     pub in_group: bool,
+    /// Allow users to execute this command only in resident chat
+    pub in_resident_chat: bool,
 }
 
 impl CommandAccessRules {
     pub const fn new() -> Self {
-        Self { admin: false, resident: false, in_private: true, in_group: true }
+        Self {
+            admin: false,
+            resident: false,
+            in_private: true,
+            in_group: true,
+            in_resident_chat: false,
+        }
     }
 }
 
@@ -245,6 +253,10 @@ where
         && !is_resident(&mut env.conn(), msg.from.as_ref()?)
     {
         Some("You must be a resident to execute this command")
+    } else if rules.in_resident_chat
+        && !env.config.telegram.chats.residential.contains(&msg.chat.id)
+    {
+        Some("This command is allowed only in resident chat")
     } else {
         None
     };

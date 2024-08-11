@@ -2,6 +2,7 @@
 
 mod diesel_json;
 mod dptree_ext;
+mod espcam;
 mod format_to;
 mod log_error;
 pub mod mikrotik;
@@ -13,6 +14,7 @@ mod wikijs;
 
 pub use diesel_json::Sqlizer;
 pub use dptree_ext::HandlerExt;
+pub use espcam::read_camera_image;
 pub(crate) use format_to::format_to;
 pub use log_error::ResultExt;
 pub use parsers::{

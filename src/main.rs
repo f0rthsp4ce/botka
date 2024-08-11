@@ -145,13 +145,15 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         log::info!("Running in passive mode");
     }
 
+    let reqwest_client = reqwest::ClientBuilder::new()
+        .danger_accept_invalid_certs(true)
+        .build()?;
+
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&format!(
             "sqlite://{DB_FILENAME}"
         ))?),
-        reqwest_client: reqwest::ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
-            .build()?,
+        reqwest_client: reqwest_client.clone(),
         openai_client: async_openai::Client::with_config(
             async_openai::config::OpenAIConfig::new()
                 .with_api_key(config.services.openai.api_key.clone()),
@@ -187,6 +189,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::needs::message_handler())
                     .branch(modules::ask_to_visit::message_handler())
                     .branch(modules::welcome::message_handler())
+                    .branch(modules::camera::command_handler())
                     .endpoint(drop_endpoint),
             )
             .branch(
@@ -235,7 +238,8 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
 
     set.spawn(vortex_of_doom(
         bot.clone(),
-        Arc::<config::Config>::clone(&config),
+        reqwest_client.clone(),
+        Arc::clone(&config),
     ));
 
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());
