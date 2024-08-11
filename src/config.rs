@@ -9,6 +9,7 @@
 
 use std::net::SocketAddr;
 
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use teloxide::types::{ChatId, ThreadId, UserId};
 
@@ -78,6 +79,7 @@ pub struct Services {
     pub home_assistant: HomeAssistant,
     pub wikijs: WikiJs,
     pub openai: OpenAI,
+    pub vortex_of_doom_cam: EspCam,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -106,6 +108,11 @@ pub struct OpenAI {
     pub api_key: String,
     #[serde(default)]
     pub disable: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EspCam {
+    pub address: Url,
 }
 
 #[cfg(test)]
