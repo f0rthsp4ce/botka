@@ -4,6 +4,7 @@ mod diesel_json;
 mod dptree_ext;
 mod espcam;
 mod format_to;
+mod ldap;
 mod log_error;
 pub mod mikrotik;
 mod parsers;
@@ -24,6 +25,10 @@ pub use replace_urls::replace_urls_with_titles;
 pub use status_change::StatusChangeDetector;
 pub use wikijs::{get_wikijs_page, get_wikijs_updates, WikiJsUpdateState};
 
+pub use self::ldap::{
+    add_user_to_group, connect, get_user, get_user_groups,
+    remove_user_from_group, update_user,
+};
 pub use self::teloxide::{
     write_message_link, BotExt, ChatIdExt, MessageExt, ThreadIdPair, UserExt,
     GENERAL_THREAD_ID,

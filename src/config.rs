@@ -79,6 +79,7 @@ pub struct Services {
     pub home_assistant: HomeAssistant,
     pub wikijs: WikiJs,
     pub openai: OpenAI,
+    pub ldap: Ldap,
     pub vortex_of_doom_cam: EspCam,
     pub racovina_cam: EspCam,
 }
@@ -109,6 +110,61 @@ pub struct OpenAI {
     pub api_key: String,
     #[serde(default)]
     pub disable: bool,
+}
+
+pub fn default_ldap_groups_dn() -> String {
+    "ou=groups".to_string()
+}
+
+pub fn default_ldap_users_dn() -> String {
+    "ou=users".to_string()
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Ldap {
+    pub domain: String,
+    #[serde(default)]
+    pub port: Option<u16>,
+    #[serde(default)]
+    pub tls: Option<bool>,
+    #[serde(default)]
+    pub verify_cert: Option<bool>,
+    pub user: String,
+    pub password: String,
+    pub base_dn: String,
+    #[serde(default = "default_ldap_groups_dn")]
+    pub groups_dn: String,
+    #[serde(default = "default_ldap_users_dn")]
+    pub users_dn: String,
+    pub attributes: LdapAttributes,
+}
+
+fn default_ldap_attribute_user_class() -> String {
+    "forthspacePerson".to_string()
+}
+
+fn default_ldap_attribute_telegram_id() -> String {
+    "telegramId".to_string()
+}
+
+fn default_ldap_attribute_group_class() -> String {
+    "groupOfUniqueNames".to_string()
+}
+
+fn default_ldap_attribute_group_member() -> String {
+    "uniqueMember".to_string()
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LdapAttributes {
+    #[serde(default = "default_ldap_attribute_user_class")]
+    pub user_class: String,
+    #[serde(default = "default_ldap_attribute_telegram_id")]
+    pub telegram_id: String,
+    #[serde(default = "default_ldap_attribute_group_class")]
+    pub group_class: String,
+    #[serde(default = "default_ldap_attribute_group_member")]
+    pub group_member: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
