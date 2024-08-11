@@ -3,6 +3,7 @@
 pub mod ask_to_visit;
 pub mod basic;
 pub mod borrowed_items;
+pub mod camera;
 pub mod dashboard;
 pub mod forward_topic_pins;
 pub mod mac_monitoring;
