@@ -31,12 +31,14 @@ use argh::FromArgs;
 use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use modules::vortex_of_doom::vortex_of_doom;
 use tap::Pipe as _;
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::payloads::AnswerCallbackQuerySetters;
 use teloxide::requests::Requester;
 use teloxide::types::{CallbackQuery, Message, Update};
 use teloxide::Bot;
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use utils::HandlerExt as _;
 
@@ -125,32 +127,38 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::redundant_pub_crate)]
 async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     let prometheus = PrometheusBuilder::new().install_recorder()?;
     metrics::register_metrics();
     modules::borrowed_items::register_metrics();
 
-    let config: crate::config::Config = File::open(config_fpath)
-        .context("Failed to open config file")?
-        .pipe(serde_yaml::from_reader)
-        .context("Failed to parse config file")?;
+    let config: Arc<crate::config::Config> = Arc::new(
+        File::open(config_fpath)
+            .context("Failed to open config file")?
+            .pipe(serde_yaml::from_reader)
+            .context("Failed to parse config file")?,
+    );
 
     if config.telegram.passive_mode {
         log::info!("Running in passive mode");
     }
 
+    let reqwest_client = reqwest::ClientBuilder::new()
+        .danger_accept_invalid_certs(true)
+        .build()?;
+
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&format!(
             "sqlite://{DB_FILENAME}"
         ))?),
-        reqwest_client: reqwest::ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
-            .build()?,
+        reqwest_client: reqwest_client.clone(),
         openai_client: async_openai::Client::with_config(
             async_openai::config::OpenAIConfig::new()
                 .with_api_key(config.services.openai.api_key.clone()),
         ),
-        config: Arc::new(config),
+        config: Arc::<config::Config>::clone(&config),
         config_path: config_fpath.into(),
     });
 
@@ -201,35 +209,59 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     ])
     .build();
     let bot_shutdown_token = dispatcher.shutdown_token().clone();
-    let mut join_handles = Vec::new();
-    join_handles.push(tokio::spawn(async move { dispatcher.dispatch().await }));
+    let mut set = JoinSet::new();
+    set.spawn(async move { dispatcher.dispatch().await });
 
     let cancel = CancellationToken::new();
 
     if !bot_env.config.telegram.passive_mode {
-        join_handles.push(tokio::spawn(modules::updates::task(
+        set.spawn(modules::updates::task(
             Arc::clone(&bot_env),
             bot.clone(),
             cancel.clone(),
-        )));
+        ));
     }
 
-    join_handles.push(tokio::spawn(web_srv::run(
+    set.spawn(web_srv::run(
         SqliteConnection::establish(&format!("sqlite://{DB_FILENAME}"))?,
         Arc::clone(&bot_env.config),
         prometheus,
         cancel.clone(),
-    )));
+    ));
 
-    tokio::spawn(crate::modules::mac_monitoring::watch_loop(
+    set.spawn(crate::modules::mac_monitoring::watch_loop(
         Arc::clone(&bot_env),
         mac_monitoring_state,
-        Arc::new(bot.clone()),
+        bot.clone(),
+    ));
+
+    set.spawn(vortex_of_doom(
+        bot.clone(),
+        reqwest_client.clone(),
+        Arc::<config::Config>::clone(&config),
     ));
 
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());
 
-    futures::future::join_all(join_handles).await;
+    let first_ctrl_c = tokio::signal::ctrl_c();
+    tokio::select! {
+        _ = first_ctrl_c => {
+            let second_ctrl_c = tokio::signal::ctrl_c();
+            let wait = tokio::time::sleep(std::time::Duration::from_secs(5));
+            log::warn!("Waiting 5 seconds for tasks to finish.");
+            log::warn!("You can press ^C to cancel this.");
+            tokio::select! {
+                _ = second_ctrl_c => {
+                    set.abort_all();
+                }
+                () = wait => {
+                    set.abort_all();
+                }
+            };
+        }
+    };
+
+    while (set.join_next().await).is_some() {}
 
     Ok(())
 }

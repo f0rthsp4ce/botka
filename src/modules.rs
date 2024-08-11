@@ -13,4 +13,5 @@ pub mod resident_tracker;
 pub mod tg_scraper;
 pub mod updates;
 pub mod userctl;
+pub mod vortex_of_doom;
 pub mod welcome;

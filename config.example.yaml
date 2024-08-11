@@ -53,6 +53,12 @@ telegram:
     # Chat to push Wiki.js update notifications.
     wikijs_updates: { chat: -1001234567890, thread: 123 }
 
+    # Chat to send vortex of doom pings
+    vortex_of_doom:
+      schedule: "0 0 7 * * 2 *"
+      chat: { chat: -1001234567890, thread: 111 }
+      additional_text: "Ping: @username"
+
 # Address to to provide HTTP API on.
 server_addr: 127.0.0.1:8080
 
@@ -87,3 +93,8 @@ services:
     api_key: SECRET
     # Use stub logic instead of OpenAI API. Useful for local testing.
     disable: false
+
+  # Vortex of Doom camera configuration.
+  vortex_of_doom_cam:
+    # URL to the camera image.
+    url: http://espcam-2.lo.f0rth.space:8081/

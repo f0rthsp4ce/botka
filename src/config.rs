@@ -9,6 +9,7 @@
 
 use std::net::SocketAddr;
 
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use teloxide::types::{ChatId, ThreadId, UserId};
 
@@ -42,6 +43,7 @@ pub struct TelegramChats {
     pub ask_to_visit: ThreadIdPair,
     pub resident_owned: Vec<ResidentOwned>,
     pub wikijs_updates: ThreadIdPair,
+    pub vortex_of_doom: VortexOfDoom,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -57,12 +59,27 @@ pub struct FowardPins {
     pub ignore_threads: Vec<ThreadId>,
 }
 
+/// Every tuesday on 07:00
+fn default_vortex_of_doom_schedule() -> String {
+    "0 0 7 * * 2 *".to_string()
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VortexOfDoom {
+    #[serde(default = "default_vortex_of_doom_schedule")]
+    pub schedule: String,
+    pub chat: ThreadIdPair,
+    #[serde(default)]
+    pub additional_text: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Services {
     pub mikrotik: Mikrotik,
     pub home_assistant: HomeAssistant,
     pub wikijs: WikiJs,
     pub openai: OpenAI,
+    pub vortex_of_doom_cam: EspCam,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -91,6 +108,11 @@ pub struct OpenAI {
     pub api_key: String,
     #[serde(default)]
     pub disable: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EspCam {
+    pub url: Url,
 }
 
 #[cfg(test)]
