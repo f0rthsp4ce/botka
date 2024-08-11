@@ -36,6 +36,9 @@ pub enum Commands {
     #[command(description = "Update LDAP settings.")]
     #[custom(in_private = true, resident = true)]
     LdapUpdate(String),
+    #[command(description = "Show your LDAP groups.")]
+    #[custom(in_private = true, resident = true)]
+    LdapGroups,
 }
 
 /// Control personal configuration.
@@ -84,6 +87,7 @@ async fn start<'a>(
             ldap_reset_password(bot, env, msg).await?;
         }
         Commands::LdapUpdate(args) => ldap_update(bot, env, msg, &args).await?,
+        Commands::LdapGroups => ldap_groups(bot, env, msg).await?,
     }
     Ok(())
 }
@@ -233,5 +237,30 @@ async fn ldap_reset_password(
     )
     .parse_mode(teloxide::types::ParseMode::Html)
     .await?;
+    Ok(())
+}
+
+async fn ldap_groups(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
+    let mut ldap_conn = env.ldap_client().await;
+    let user_id =
+        msg.from.as_ref().ok_or_else(|| anyhow::anyhow!("No user ID"))?.id;
+    let Some(user) =
+        ldap::get_user(&mut ldap_conn, &env.config.services.ldap, user_id)
+            .await?
+    else {
+        ldap_not_found(bot, msg).await?;
+        return Ok(());
+    };
+
+    let groups =
+        ldap::get_user_groups(&mut ldap_conn, &env.config.services.ldap, &user)
+            .await?;
+
+    let mut text = "Your LDAP groups:\n".to_string();
+    for group in groups {
+        text.push_str(&format!("- {group}\n"));
+    }
+
+    bot.reply_message(&msg, text).await?;
     Ok(())
 }
