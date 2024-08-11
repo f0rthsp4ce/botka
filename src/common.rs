@@ -10,6 +10,7 @@ use diesel::{
     ExpressionMethods, QueryDsl, QueryResult, RunQueryDsl, SqliteConnection,
 };
 use itertools::Itertools;
+use ldap_rs::LdapClient;
 use teloxide::requests::Requester;
 use teloxide::types::{Me, Message, StickerKind, User, UserId};
 use teloxide::utils::command::BotCommands;
@@ -74,6 +75,8 @@ pub struct BotEnv {
     pub config_path: PathBuf,
     pub reqwest_client: reqwest::Client,
     pub openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
+    // For some reason std mutexes not working in teloxide handlers
+    pub ldap_client: tokio::sync::Mutex<LdapClient>,
 }
 
 impl BotEnv {
@@ -85,6 +88,10 @@ impl BotEnv {
         f: impl FnOnce(&mut SqliteConnection) -> QueryResult<T>,
     ) -> QueryResult<T> {
         self.conn().exclusive_transaction(f)
+    }
+
+    pub async fn ldap_client(&self) -> tokio::sync::MutexGuard<'_, LdapClient> {
+        self.ldap_client.lock().await
     }
 }
 

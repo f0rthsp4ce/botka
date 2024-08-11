@@ -155,6 +155,10 @@ fn default_ldap_attribute_group_member() -> String {
     "uniqueMember".to_string()
 }
 
+fn default_ldap_attribute_resident_group() -> String {
+    "residents".to_string()
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LdapAttributes {
     #[serde(default = "default_ldap_attribute_user_class")]
@@ -165,6 +169,8 @@ pub struct LdapAttributes {
     pub group_class: String,
     #[serde(default = "default_ldap_attribute_group_member")]
     pub group_member: String,
+    #[serde(default = "default_ldap_attribute_resident_group")]
+    pub resident_group: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

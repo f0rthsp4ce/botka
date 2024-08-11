@@ -83,6 +83,7 @@ pub struct User {
     pub uid: String,
     pub cn: String,
     pub sn: String,
+    pub display_name: Option<String>,
     pub telegram_id: Option<UserId>,
     pub mail: Option<String>,
     /// Hashed password in LDAP format.
@@ -90,6 +91,28 @@ pub struct User {
 }
 
 impl User {
+    pub fn new_from_telegram(
+        config: &Ldap,
+        telegram_id: UserId,
+        username: &str,
+        email: &str,
+        display_name: Option<String>,
+    ) -> Self {
+        Self {
+            dn: format!(
+                "cn={},{},{}",
+                username, config.users_dn, config.base_dn
+            ),
+            uid: username.to_string(),
+            cn: username.to_string(),
+            sn: username.to_string(),
+            display_name,
+            telegram_id: Some(telegram_id),
+            mail: Some(email.to_string()),
+            password: None,
+        }
+    }
+
     pub fn update_password(&mut self, algo: impl PasswordHash, password: &str) {
         self.password = Some(algo.hash_password(password));
     }
@@ -137,12 +160,16 @@ impl FromAttributes for User {
         let mail = get_attribute_one_str(&attributes, "mail")
             .ok()
             .map(|s| s.to_string());
+        let display_name = get_attribute_one_str(&attributes, "displayName")
+            .ok()
+            .map(|s| s.to_string());
         Ok(Self {
             dn,
             uid: get_attribute_one_str(&attributes, "uid")?.to_string(),
             cn: get_attribute_one_str(&attributes, "cn")?.to_string(),
             sn: get_attribute_one_str(&attributes, "sn")?.to_string(),
             password: user_password,
+            display_name,
             telegram_id,
             mail,
         })
@@ -182,6 +209,7 @@ impl IntoAttributes for User {
         optional_attr!(attrs, &config.attributes.telegram_id, self.telegram_id);
         optional_attr!(attrs, "mail", &self.mail);
         optional_attr!(attrs, "userPassword", &self.password);
+        optional_attr!(attrs, "displayName", &self.display_name);
         attrs.into_iter()
     }
 }
@@ -253,10 +281,10 @@ pub trait PasswordHash {
     fn hash_password(&self, password: &str) -> String;
 }
 
-struct Sha512PasswordHash;
+pub struct Sha512PasswordHash;
 
 impl Sha512PasswordHash {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }
@@ -284,7 +312,7 @@ pub struct ConvertedSearchEntries<'a, T: FromAttributes> {
 }
 
 impl<'a, T: FromAttributes> ConvertedSearchEntries<'a, T> {
-    pub fn new(stream: SearchEntries, config: &'a Ldap) -> Self {
+    pub const fn new(stream: SearchEntries, config: &'a Ldap) -> Self {
         Self { stream, config, _phantom: std::marker::PhantomData }
     }
 }
@@ -330,17 +358,25 @@ pub async fn get_user(
     user_id: UserId,
 ) -> Result<Option<User>> {
     let base_dn = format!("{},{}", config.users_dn, config.base_dn);
+    // For some reason this query does not work.
+    // let query_str = format!(
+    //     "(&({telegram_id_attr}={telegram_id})(objectClass={user_class}))",
+    //     telegram_id_attr = config.attributes.telegram_id,
+    //     telegram_id = user_id.0,
+    //     user_class = config.attributes.user_class,
+    // );
+    let query_str = format!(
+        "({telegram_id_attr}={telegram_id})",
+        telegram_id_attr = config.attributes.telegram_id,
+        telegram_id = user_id.0,
+    );
     let query = SearchRequest::builder()
+        .scope(ldap_rs::SearchRequestScope::WholeSubtree)
         .base_dn(base_dn)
-        .filter(format!(
-            "(&({telegram_id_attr}={telegram_id})(objectClass={user_class}))",
-            telegram_id_attr = config.attributes.telegram_id,
-            telegram_id = user_id.0,
-            user_class = config.attributes.user_class,
-        ))
+        .filter(query_str)
         .size_limit(1)
         .build()?;
-    let user = match get(ldap, &config, query).await?.next().await {
+    let user = match get(ldap, config, query).await?.next().await {
         Some(Ok(entries)) => entries,
         Some(Err(e)) => return Err(e),
         None => return Ok(None),
@@ -397,7 +433,7 @@ pub async fn get_user_groups(
     ldap: &mut LdapClient,
     config: &Ldap,
     user: &User,
-) -> Result<Vec<String>> {
+) -> Result<UserGroups> {
     let base_dn = format!("{},{}", config.groups_dn, config.base_dn);
     let user_dn = user.extract_dn();
     let query = SearchRequest::builder()
@@ -428,8 +464,12 @@ pub async fn add_user_to_group(
     ldap: &mut LdapClient,
     config: &Ldap,
     user: &User,
-    group: &Group,
+    group: &str,
 ) -> Result<()> {
+    let group = Group {
+        dn: format!("cn={},{},{}", group, config.groups_dn, config.base_dn),
+        cn: group.to_string(),
+    };
     let mut request = ModifyRequest::builder(group.extract_dn());
     request = request.add_op(attr!(config.attributes.group_member, user.dn));
     ldap.modify(request.build()).await?;

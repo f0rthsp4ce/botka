@@ -96,19 +96,22 @@ services:
 
   # LDAP configuration.
   ldap:
-    uri: ldap.lo.f0rth.space
+    domain: ldap.lo.f0rth.space
     port: 389
     tls: false
     verify_cert: false
     user: cn=admin,dc=f0rth,dc=space
     password: SECRET
     base_dn: dc=f0rth,dc=space
-    groups_dn: ou=groups,dc=f0rth,dc=space
-    users_dn: ou=users,dc=f0rth,dc=space
+    groups_dn: ou=groups
+    users_dn: ou=users
 
     attributes:
       user_class: forthspacePerson
       telegram_id: telegramId
+      group_class: groupOfUniqueNames
+      group_member: uniqueMember
+      resident_group: residents
 
   # Racovina camera configuration.
   racovina_cam:
