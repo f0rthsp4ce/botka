@@ -123,7 +123,7 @@ fn commands_help<T: BotCommands + BotCommandsExtTrait>() -> String {
                 (true, true, _) => "",
                 (true, false, _) => " (in private)",
                 (false, true, false) => " (not in private)",
-                (false, true, true) => " (in resident chat)",
+                (_, _, true) => " (in resident chat)",
                 (false, false, _) => " (disabled?)",
             },
         );
