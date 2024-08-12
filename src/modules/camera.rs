@@ -22,29 +22,16 @@ pub enum Commands {
 }
 
 pub fn command_handler() -> UpdateHandler {
-    filter_command::<Commands>().endpoint(start)
-}
-
-async fn start<'a>(
-    bot: Bot,
-    env: Arc<BotEnv>,
-    msg: Message,
-    command: Commands,
-) -> Result<()> {
-    match command {
-        Commands::Racovina => camera(bot, env, msg, command).await?,
-        Commands::Hlam => camera(bot, env, msg, command).await?,
-    }
-    Ok(())
+    filter_command::<Commands>().endpoint(camera)
 }
 
 async fn camera(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-    camera_id: Commands,
+    command: Commands,
 ) -> Result<()> {
-    let camera_config = match camera_id {
+    let camera_config = match command {
         Commands::Racovina => &env.config.services.racovina_cam,
         Commands::Hlam => &env.config.services.vortex_of_doom_cam,
     };
