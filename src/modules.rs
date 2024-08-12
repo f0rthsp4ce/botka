@@ -6,6 +6,7 @@ pub mod borrowed_items;
 pub mod camera;
 pub mod dashboard;
 pub mod forward_topic_pins;
+pub mod ldap;
 pub mod mac_monitoring;
 pub mod needs;
 pub mod polls;

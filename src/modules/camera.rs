@@ -10,11 +10,6 @@ use teloxide::utils::command::BotCommands;
 use crate::common::{filter_command, BotCommandsExt, BotEnv, UpdateHandler};
 use crate::utils::{read_camera_image, BotExt};
 
-enum Id {
-    Racovina,
-    Hlam,
-}
-
 #[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
 pub enum Commands {
@@ -27,31 +22,18 @@ pub enum Commands {
 }
 
 pub fn command_handler() -> UpdateHandler {
-    filter_command::<Commands>().endpoint(start)
-}
-
-async fn start<'a>(
-    bot: Bot,
-    env: Arc<BotEnv>,
-    msg: Message,
-    command: Commands,
-) -> Result<()> {
-    match command {
-        Commands::Racovina => camera(bot, env, msg, Id::Racovina).await?,
-        Commands::Hlam => camera(bot, env, msg, Id::Hlam).await?,
-    }
-    Ok(())
+    filter_command::<Commands>().endpoint(camera)
 }
 
 async fn camera(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-    camera_id: Id,
+    command: Commands,
 ) -> Result<()> {
-    let camera_config = match camera_id {
-        Id::Racovina => &env.config.services.racovina_cam,
-        Id::Hlam => &env.config.services.vortex_of_doom_cam,
+    let camera_config = match command {
+        Commands::Racovina => &env.config.services.racovina_cam,
+        Commands::Hlam => &env.config.services.vortex_of_doom_cam,
     };
 
     let image = match read_camera_image(

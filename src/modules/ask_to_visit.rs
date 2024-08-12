@@ -59,7 +59,7 @@ async fn handle_message(
     for resident in residents {
         bot.forward_message(UserId::from(resident), msg.chat.id, msg.id)
             .await
-            .log_error("Failed to forward message to resident");
+            .log_error(module_path!(), "Failed to forward message to resident");
     }
 
     Ok(())

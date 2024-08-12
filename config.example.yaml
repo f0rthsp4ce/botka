@@ -94,6 +94,25 @@ services:
     # Use stub logic instead of OpenAI API. Useful for local testing.
     disable: false
 
+  # LDAP configuration.
+  ldap:
+    domain: ldap.lo.f0rth.space
+    port: 389
+    tls: false
+    verify_cert: false
+    user: cn=admin,dc=f0rth,dc=space
+    password: SECRET
+    base_dn: dc=f0rth,dc=space
+    groups_dn: ou=groups
+    users_dn: ou=users
+
+    attributes:
+      user_class: forthspacePerson
+      telegram_id: telegramId
+      group_class: groupOfUniqueNames
+      group_member: uniqueMember
+      resident_group: residents
+
   # Racovina camera configuration.
   racovina_cam:
     # URL to the camera image.

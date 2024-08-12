@@ -30,7 +30,7 @@ pub fn inspect_update(env: Arc<BotEnv>, upd: Update) {
     env.transaction(|conn| {
         handle_update_transaction(conn, residential_chats, filtered)
     })
-    .log_error("resident_tracker::handle_update");
+    .log_error(module_path!(), "resident_tracker::handle_update");
 }
 
 /// Scrape an update for residential chat joins/leaves and update the

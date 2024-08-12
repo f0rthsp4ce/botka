@@ -55,7 +55,7 @@ async fn check_wikijs_updates(
     {
         crate::modules::dashboard::update(bot, env)
             .await
-            .log_error("Failed to update dashboard");
+            .log_error(module_path!(), "Failed to update dashboard");
     }
 
     if let Some(updates) = updates {
