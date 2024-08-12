@@ -12,7 +12,7 @@ use crate::utils::{read_camera_image, BotExt};
 
 enum Id {
     Racovina,
-    Vortex,
+    Hlam,
 }
 
 #[derive(Clone, BotCommands, BotCommandsExt!)]
@@ -21,9 +21,9 @@ pub enum Commands {
     #[command(description = "show racovina camera image.")]
     #[custom(in_resident_chat = true)]
     Racovina,
-    #[command(description = "show vortex camera image.")]
+    #[command(description = "show hlam camera image.")]
     #[custom(in_resident_chat = true)]
-    Vortex,
+    Hlam,
 }
 
 pub fn command_handler() -> UpdateHandler {
@@ -38,7 +38,7 @@ async fn start<'a>(
 ) -> Result<()> {
     match command {
         Commands::Racovina => camera(bot, env, msg, Id::Racovina).await?,
-        Commands::Vortex => camera(bot, env, msg, Id::Vortex).await?,
+        Commands::Hlam => camera(bot, env, msg, Id::Hlam).await?,
     }
     Ok(())
 }
@@ -51,7 +51,7 @@ async fn camera(
 ) -> Result<()> {
     let camera_config = match camera_id {
         Id::Racovina => &env.config.services.racovina_cam,
-        Id::Vortex => &env.config.services.vortex_of_doom_cam,
+        Id::Hlam => &env.config.services.vortex_of_doom_cam,
     };
 
     let image = match read_camera_image(

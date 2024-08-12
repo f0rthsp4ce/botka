@@ -54,7 +54,6 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/main' }}
     needs: lint
     steps:
       - name: Checkout
