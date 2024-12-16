@@ -92,6 +92,7 @@ async fn cmd_help(bot: Bot, msg: Message) -> Result<()> {
     text.push_str(&commands_help::<crate::modules::needs::Commands>());
     text.push_str(&commands_help::<crate::modules::userctl::Commands>());
     text.push_str(&commands_help::<crate::modules::camera::Commands>());
+    text.push_str(&commands_help::<crate::modules::ldap::Commands>());
     text.push_str("\nCommands marked with * are available only to residents.");
     // "..., and with ** are available only to bot technicians."
     bot.reply_message(&msg, text)
@@ -122,7 +123,7 @@ fn commands_help<T: BotCommands + BotCommandsExtTrait>() -> String {
                 (true, true, _) => "",
                 (true, false, _) => " (in private)",
                 (false, true, false) => " (not in private)",
-                (false, true, true) => " (in resident chat)",
+                (_, _, true) => " (in resident chat)",
                 (false, false, _) => " (disabled?)",
             },
         );

@@ -4,6 +4,7 @@ mod diesel_json;
 mod dptree_ext;
 mod espcam;
 mod format_to;
+pub mod ldap;
 mod log_error;
 pub mod mikrotik;
 mod parsers;

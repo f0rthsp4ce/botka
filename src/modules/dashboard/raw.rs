@@ -104,7 +104,7 @@ async fn reset(
             async move {
                 bot.delete_message(thread.chat, MessageId::from(it))
                     .await
-                    .log_error("Failed to delete message");
+                    .log_error(module_path!(), "Failed to delete message");
                 use crate::schema::dashboard_messages::dsl as d;
                 let err = diesel::delete(
                     d::dashboard_messages

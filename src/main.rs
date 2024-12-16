@@ -40,7 +40,7 @@ use teloxide::types::{CallbackQuery, Message, Update};
 use teloxide::Bot;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use utils::HandlerExt as _;
+use utils::{ldap, HandlerExt as _};
 
 mod common;
 mod config;
@@ -149,6 +149,9 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         .danger_accept_invalid_certs(true)
         .build()?;
 
+    let ldap_client =
+        tokio::sync::Mutex::new(ldap::connect(&config.services.ldap).await?);
+
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&format!(
             "sqlite://{DB_FILENAME}"
@@ -160,6 +163,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         ),
         config: Arc::<config::Config>::clone(&config),
         config_path: config_fpath.into(),
+        ldap_client,
     });
 
     let proxy_addr = tracing_proxy::start().await?;
@@ -190,6 +194,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::ask_to_visit::message_handler())
                     .branch(modules::welcome::message_handler())
                     .branch(modules::camera::command_handler())
+                    .branch(modules::ldap::command_handler())
                     .endpoint(drop_endpoint),
             )
             .branch(
@@ -239,7 +244,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     set.spawn(vortex_of_doom(
         bot.clone(),
         reqwest_client.clone(),
-        Arc::<config::Config>::clone(&config),
+        Arc::clone(&config),
     ));
 
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());
