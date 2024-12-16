@@ -33,6 +33,7 @@ pub enum Commands {
     Help,
 
     #[command(description = "list residents.")]
+    #[custom(resident = true)]
     Residents,
 
     #[command(description = "show residents admin table.")]
