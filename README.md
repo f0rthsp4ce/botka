@@ -1,7 +1,7 @@
 # F0RTHSP4CE Telegram Bot
 
 <p>
-<a href="https://t.me/tar_f0_bot"><img alt="Telegram Bot" src="https://img.shields.io/badge/Telegram-%40tar__f0__bot-blue?logo=telegram"></a>
+<a href="https://t.me/F0RTHSP4CE_bot"><img alt="Telegram Bot" src="https://img.shields.io/badge/Telegram-%40F0RTHSP4CE__bot-blue?logo=telegram"></a>
 <a href="https://t.me/c/1900643629/7882"><img alt="Internal Discussion Topic" src="https://img.shields.io/badge/Internal_Discussion_Topic-Internal_issue_bot-blue?logo=data%3Aimage%2Fgif%3Bbase64%2CR0lGODlhEAAQAPQBAAAAAAEBASoUBQENN0sLA28TA05REn9%2BGwEVUQIaY4kYBLJICX6CGYuKHZ2cIbmaKamqIv%2BhHtTSK%2FP0MgIkijMviAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAAAALAAAAAAQABAAAAVWICCOQRmMKGmuKRAka3ySAwXLs2siFIKLsgRFppPVBrhkJRkrLCIPA7OgCDQmDImgVCQoCAEDRCJxcHWFQkkwmUhNIwHYdJ00pCicQzI55FRELYB%2FIiEAOw%3D%3D"></a>
 <a href="https://wiki.f0rth.space/en/residents/telegram-bot"><img alt="Wiki" src="https://img.shields.io/badge/Wiki-Project_Page-blue?logo=wikidotjs"></a>
 <a href="http://10.0.24.18:42777"><img alt="HTTP API" src="https://img.shields.io/badge/HTTP_API-10.0.24.18%3A42777-blue?logo=openapiinitiative"></a>
