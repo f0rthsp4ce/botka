@@ -65,6 +65,8 @@
           };
           revision = self.lastModifiedDate + "-"
             + self.shortRev or self.dirtyShortRev or "unknown";
+
+          craneLib = crane.mkLib pkgs;
         in rec {
           formatter = pkgs.nixfmt;
           packages.default = packages.f0bot;
@@ -76,7 +78,7 @@
               ---set-revision ${revision} "$@"
           '';
 
-          packages.f0bot-unwrapped = crane.lib.${system}.buildPackage {
+          packages.f0bot-unwrapped = craneLib.buildPackage {
             src = nix-filter.lib {
               root = ./.;
               include =
