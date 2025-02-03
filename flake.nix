@@ -84,6 +84,8 @@
               include =
                 [ "src" "Cargo.toml" "Cargo.lock" "config.example.yaml" ];
             };
+            # Tests require network access, which is not allowed in the build
+            doCheck = false;
             nativeBuildInputs = buildDeps;
           };
 
