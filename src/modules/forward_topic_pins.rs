@@ -31,7 +31,7 @@ pub fn state() -> Arc<Mutex<State>> {
     Arc::new(Mutex::new(State::default()))
 }
 
-pub async fn inspect_message<'a>(
+pub async fn inspect_message(
     bot: Bot,
     env: Arc<BotEnv>,
     state: Arc<Mutex<State>>,
@@ -64,7 +64,7 @@ async fn forward_message(
 ) -> Result<()> {
     let forward_to = env.config.telegram.chats.forward_pins.iter().find(|f| {
         f.from == msg.chat.id
-            && msg.thread_id.map_or(true, |t| !f.ignore_threads.contains(&t))
+            && msg.thread_id.is_none_or(|t| !f.ignore_threads.contains(&t))
     });
     let Some(forward_to) = forward_to else { return Ok(()) };
 

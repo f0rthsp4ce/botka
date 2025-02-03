@@ -2,7 +2,7 @@
   description = "F0RTHSP4CE Telegram bot";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     crane.url = "github:ipetkov/crane";
     nix-filter.url = "github:numtide/nix-filter";
     nixpkgs-mozilla.url = "github:mozilla/nixpkgs-mozilla";
@@ -24,9 +24,9 @@
             inherit system;
             overlays = [ (import nixpkgs-mozilla) ];
           }).rustChannelOf {
-            date = "2023-12-10";
+            date = "2025-02-03";
             channel = "nightly";
-            sha256 = "sha256-SlW7OJXe/L6JP641SL0Tagn48s85zW9DOGQmr/Cp4SI=";
+            sha256 = "sha256-XzlxUb1J0vSqrrOrVMd1y0RdJEILGA7nUCM1vZevXCU=";
           }).rust.override {
             # rust-src is required for rust-analyzer
             extensions = [ "rust-src" ];

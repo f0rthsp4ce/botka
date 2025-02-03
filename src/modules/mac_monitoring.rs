@@ -141,7 +141,7 @@ pub async fn watch_loop(env: Arc<BotEnv>, state: Arc<RwLock<State>>, bot: Bot) {
         .await
         {
             log::error!("Failed to get leases: {e}");
-        };
+        }
         sleep(Duration::from_secs(60)).await;
     }
 }

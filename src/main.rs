@@ -100,7 +100,7 @@ struct SubCommandScrape {
     #[argh(positional)]
     log_file: OsString,
 
-    /// list of residential_chats
+    /// list of `residential_chats`
     #[argh(positional)]
     residential_chats: Vec<i64>,
 }

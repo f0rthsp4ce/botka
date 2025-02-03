@@ -32,6 +32,7 @@ pub struct NewTgUser<'a> {
     pub last_name: Option<&'a str>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::tg_chats)]
 pub struct TgChat {
@@ -59,6 +60,7 @@ pub struct NewTgUserInChat {
     pub seen: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::tg_chat_topics)]
 pub struct TgChatTopic {

@@ -355,6 +355,7 @@ mod tests {
         #[custom(admin = true)]
         WithDocAndCustom,
 
+        #[allow(dead_code)]
         #[custom(in_private = true, in_group = true)]
         WithArgsAndCustom(i32, i32),
     }

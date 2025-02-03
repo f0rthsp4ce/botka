@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context as _;
 
-lazy_static::lazy_static! {
-    static ref URL_REGEX: regex::Regex =
+static URL_REGEX: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| {
         regex::Regex::new(
             r"(?x)
                 \b
@@ -17,8 +17,8 @@ lazy_static::lazy_static! {
                 )
             ",
         )
-        .expect("Failed to compile URL regex");
-}
+        .expect("Failed to compile URL regex")
+    });
 
 /// Replace URLs with their titles, fetching them from the web.
 /// TODO: it's a good idea to use telegram entities rather than regex parsing.
@@ -32,7 +32,10 @@ pub async fn replace_urls_with_titles(texts: &[&str]) -> Vec<String> {
     let link_texts = texts
         .iter()
         .flat_map(|&text| {
-            URL_REGEX.find_iter(text).map(|m| m.as_str().to_owned())
+            URL_REGEX
+                .find_iter(text)
+                .map(|m| m.as_str().to_owned())
+                .collect::<Vec<String>>()
         })
         .collect::<HashSet<_>>()
         .into_iter()

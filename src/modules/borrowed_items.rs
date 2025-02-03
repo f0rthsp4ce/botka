@@ -398,7 +398,7 @@ fn balance_columns<T>(
     max_columns: usize,
     mut it: impl ExactSizeIterator<Item = T>,
 ) -> Vec<Vec<T>> {
-    let rows = (it.len() + max_columns - 1) / max_columns;
+    let rows = it.len().div_ceil(max_columns);
     let columns = it.len() / rows;
     let rows_with_extra_columns = it.len() % rows;
 

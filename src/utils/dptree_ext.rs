@@ -29,10 +29,7 @@ where
     Output: 'a,
     Descr: HandlerDescription,
 {
-    fn inspect_err<F, Error, Args>(
-        self,
-        f: F,
-    ) -> Handler<'a, Input, Output, Descr>
+    fn inspect_err<F, Error, Args>(self, f: F) -> Self
     where
         F: Injectable<Input, Result<(), Error>, Args> + Send + Sync + 'a,
         Error: 'a + Debug,

@@ -210,7 +210,7 @@ async fn update_pinned_needs_message(
 ) -> Result<()> {
     let pin = models::needs_last_pin.get(&mut env.conn())?;
     let Some(pin) = pin else { return Ok(()) };
-    if msg.map_or(false, |msg| pin.thread_id_pair.has_message(msg)) {
+    if msg.is_some_and(|msg| pin.thread_id_pair.has_message(msg)) {
         return Ok(());
     }
     edit_list_message(bot, env, pin.thread_id_pair.chat, pin.message_id)
@@ -286,7 +286,7 @@ fn command_needs_message_and_buttons(
         if buttons.is_empty()
             || idx2.is_none()
             || idx2 == Some(0)
-            || buttons.last().map_or(false, |row: &Vec<_>| row.len() >= 3)
+            || buttons.last().is_some_and(|row: &Vec<_>| row.len() >= 3)
         {
             buttons.push(vec![]);
         }

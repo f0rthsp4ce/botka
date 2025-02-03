@@ -124,6 +124,7 @@ pub struct Group {
     pub cn: String,
 }
 
+#[allow(dead_code)]
 pub type UserGroups = Vec<String>;
 
 /// Trait to convert a LDAP attributes into a type.
@@ -318,9 +319,9 @@ impl<'a, T: FromAttributes> ConvertedSearchEntries<'a, T> {
     }
 }
 
-impl<'a, T: FromAttributes> Unpin for ConvertedSearchEntries<'a, T> {}
+impl<T: FromAttributes> Unpin for ConvertedSearchEntries<'_, T> {}
 
-impl<'a, T: FromAttributes> Stream for ConvertedSearchEntries<'a, T> {
+impl<T: FromAttributes> Stream for ConvertedSearchEntries<'_, T> {
     type Item = Result<T>;
 
     fn poll_next(
@@ -430,6 +431,7 @@ pub async fn update_user(
 }
 
 /// Get user groups from LDAP.
+#[allow(dead_code)]
 pub async fn get_user_groups(
     ldap: &mut LdapClient,
     config: &Ldap,
@@ -478,6 +480,7 @@ pub async fn add_user_to_group(
 }
 
 /// Remove a user from a group in LDAP.
+#[allow(dead_code)]
 pub async fn remove_user_from_group(
     ldap: &mut LdapClient,
     config: &Ldap,

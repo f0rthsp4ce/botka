@@ -59,7 +59,7 @@ pub fn command_handler() -> UpdateHandler {
     filter_command::<Commands>().endpoint(start)
 }
 
-async fn start<'a>(
+async fn start(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
@@ -136,7 +136,7 @@ fn commands_help<T: BotCommands + BotCommandsExtTrait>() -> String {
     result
 }
 
-async fn cmd_list_residents<'a>(
+async fn cmd_list_residents(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,

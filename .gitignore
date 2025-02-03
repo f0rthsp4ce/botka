@@ -1,8 +1,9 @@
-/*.local
-/.direnv
-/local
-/residents-timeline/dist
-/target
-node_modules
+*.local
+/.direnv/
+/local/
+/residents-timeline/dist/
+/target/
+/node_modules/
 result
 result-*
+/*_cache/

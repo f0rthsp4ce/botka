@@ -73,7 +73,7 @@ pub fn command_handler() -> UpdateHandler {
     filter_command::<Commands>().endpoint(start)
 }
 
-async fn start<'a>(
+async fn start(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
@@ -240,6 +240,8 @@ async fn ldap_reset_password(
     Ok(())
 }
 
+#[allow(dead_code)]
+#[allow(clippy::significant_drop_tightening)]
 async fn ldap_groups(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
     let mut ldap_conn = env.ldap_client().await;
     let user_id =

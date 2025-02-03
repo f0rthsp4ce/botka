@@ -15,12 +15,10 @@ use teloxide::types::MessageKind;
 use crate::common::BotEnv;
 use crate::db::{DbChatId, DbThreadId};
 
-lazy_static::lazy_static! {
-    static ref CLOSED_TOPIC_REGEX: Regex =
-        Regex::new(r"^\[[×xXхХ]\] *").unwrap();
-}
+static CLOSED_TOPIC_REGEX: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"^\[[×xXхХ]\] *").unwrap());
 
-pub async fn inspect_message<'a>(
+pub async fn inspect_message(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,

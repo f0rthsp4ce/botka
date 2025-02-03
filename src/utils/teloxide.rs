@@ -23,6 +23,7 @@ pub trait BotExt {
     ) -> JsonRequest<payloads::SendMessage>;
 
     /// Similar to [`Bot::send_poll`], but replies to the given message.
+    #[allow(dead_code)]
     fn reply_poll<Q: Into<String>, O: IntoIterator<Item = String>>(
         &self,
         msg: &Message,

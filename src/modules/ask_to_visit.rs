@@ -33,7 +33,7 @@ async fn handle_message(
     };
     if text.starts_with("//") {
         return Ok(());
-    };
+    }
     let Some(from) = msg.from else { return Ok(()) };
 
     let guard = &*state.read().await;

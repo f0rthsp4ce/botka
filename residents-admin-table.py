@@ -32,7 +32,7 @@ class WatchingChat(typing.TypedDict):
 
 
 async def main() -> None:
-    with open(sys.argv[1]) as f:  # noqa: ASYNC101
+    with open(sys.argv[1]) as f:  # noqa: ASYNC230
         config = yaml.safe_load(f)
 
     db = sqlite3.connect(f"file:{DB_FILENAME}?mode=ro", uri=True)

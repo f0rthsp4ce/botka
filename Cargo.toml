@@ -20,7 +20,6 @@ git-version = "0.3.5"
 gql_client = "1.0.7"
 hyper = { version = "0.14.27", features = ["server"] }
 itertools = "0.11.0"
-lazy_static = "1.4.0"
 ldap-rs = { version = "0.4.3", features = [
   "tls-rustls",
 ], default-features = false }
