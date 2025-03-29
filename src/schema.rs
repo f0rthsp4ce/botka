@@ -107,6 +107,13 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    user_ssh_keys (tg_id, key) {
+        tg_id -> BigInt,
+        key -> Text,
+    }
+}
+
 diesel::allow_tables_to_appear_in_same_query!(
     borrowed_items,
     dashboard_messages,
@@ -119,4 +126,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     tg_users_in_chats,
     tracked_polls,
     user_macs,
+    user_ssh_keys,
 );

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use diesel::prelude::*;
@@ -47,7 +48,12 @@ pub async fn run(
         .get(get_index)
         .push(Router::with_path("/metrics").get(get_metrics))
         .push(Router::with_path("/residents/v0").get(get_residents_v0))
-        .push(Router::with_path("/all_residents/v0").get(get_all_residents_v0));
+        .push(Router::with_path("/all_residents/v0").get(get_all_residents_v0))
+        .push(Router::with_path("/ssh_keys/v0/all").get(get_all_ssh_keys_v0))
+        .push(
+            Router::with_path("/ssh_keys/v0/by_user")
+                .get(get_ssh_keys_by_user_v0),
+        );
 
     let doc = OpenApi::with_info(
         salvo_oapi::Info::new("Botka HTTP API", "0.1").description(
@@ -146,4 +152,55 @@ async fn get_all_residents_v0() -> Json<Vec<models::Resident>> {
         .load(&mut *state().conn.lock().unwrap())
         .map(Json)
         .unwrap()
+}
+
+/// Get all SSH keys from active residents.
+#[endpoint()]
+async fn get_all_ssh_keys_v0() -> Json<HashMap<String, Vec<String>>> {
+    // Get all SSH keys for active residents
+    let ssh_keys: Vec<String> = schema::user_ssh_keys::table
+        .inner_join(
+            schema::residents::table
+                .on(schema::user_ssh_keys::tg_id.eq(schema::residents::tg_id)),
+        )
+        .filter(schema::residents::end_date.is_null())
+        .select(schema::user_ssh_keys::key)
+        .load(&mut *state().conn.lock().unwrap())
+        .unwrap_or_default();
+
+    // Format: {"root": ["key1", "key2", ...]}
+    let mut result = HashMap::new();
+    result.insert("root".to_string(), ssh_keys);
+
+    Json(result)
+}
+
+/// Get SSH keys grouped by username from active residents.
+#[endpoint()]
+async fn get_ssh_keys_by_user_v0() -> Json<HashMap<String, Vec<String>>> {
+    // Get all SSH keys, usernames, and resident status
+    let ssh_keys: Vec<(Option<String>, String)> = schema::user_ssh_keys::table
+        .inner_join(
+            schema::tg_users::table
+                .on(schema::user_ssh_keys::tg_id.eq(schema::tg_users::id)),
+        )
+        .inner_join(
+            schema::residents::table
+                .on(schema::user_ssh_keys::tg_id.eq(schema::residents::tg_id)),
+        )
+        .filter(schema::residents::end_date.is_null())
+        .select((schema::tg_users::username, schema::user_ssh_keys::key))
+        .load(&mut *state().conn.lock().unwrap())
+        .unwrap_or_default();
+
+    // Group SSH keys by username
+    let mut result = HashMap::new();
+    for (username, key) in ssh_keys {
+        result
+            .entry(username.unwrap_or_default())
+            .or_insert_with(Vec::new)
+            .push(key);
+    }
+
+    Json(result)
 }
