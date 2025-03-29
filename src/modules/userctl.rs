@@ -12,6 +12,7 @@ use teloxide::utils::html;
 
 use crate::common::{filter_command, BotCommandsExt, BotEnv, UpdateHandler};
 use crate::db::DbUserId;
+use crate::models;
 use crate::utils::BotExt;
 
 #[derive(Clone, BotCommands, BotCommandsExt!)]
@@ -29,6 +30,14 @@ pub enum Commands {
     #[command(description = "get SSH public keys of a user by username.")]
     #[custom(resident = true)]
     GetSsh(String),
+
+    #[command(description = "add a user as a resident by username or ID.")]
+    #[custom(admin = true)]
+    AddResident(String),
+
+    #[command(description = "remove a user from residents by username or ID.")]
+    #[custom(admin = true)]
+    RemoveResident(String),
 }
 
 /// Control personal configuration.
@@ -57,6 +66,12 @@ async fn handle_command(
         Commands::Userctl(args) => cmd_userctl(bot, env, msg, args).await,
         Commands::AddSsh(args) => cmd_add_ssh(bot, env, msg, args).await,
         Commands::GetSsh(args) => cmd_get_ssh(bot, env, msg, args).await,
+        Commands::AddResident(args) => {
+            cmd_add_resident(bot, env, msg, args).await
+        }
+        Commands::RemoveResident(args) => {
+            cmd_remove_resident(bot, env, msg, args).await
+        }
     }
 }
 
@@ -255,6 +270,170 @@ async fn cmd_get_ssh(
         .await?;
 
     Ok(())
+}
+
+async fn cmd_add_resident(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+    args: String,
+) -> Result<()> {
+    let args = args.trim();
+    if args.is_empty() {
+        bot.reply_message(&msg, "Please provide a Telegram username or ID.")
+            .await?;
+        return Ok(());
+    }
+
+    // Try to find the user by username or ID
+    let user = find_user_by_username_or_id(&env, args)?;
+    let Some(user) = user else {
+        bot.reply_message(&msg, "User not found.").await?;
+        return Ok(());
+    };
+
+    // Check if user is already a resident
+    let is_resident = env.transaction(|conn| {
+        use crate::schema::residents::dsl as r;
+        r::residents
+            .filter(r::tg_id.eq(user.id))
+            .filter(r::end_date.is_null())
+            .count()
+            .get_result::<i64>(conn)
+    })? > 0;
+
+    if is_resident {
+        let mut response = String::new();
+        response.push_str("User ");
+        crate::common::format_user(&mut response, user.id, Some(&user), false);
+        response.push_str(" is already a resident.");
+        bot.reply_message(&msg, response)
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .await?;
+        return Ok(());
+    }
+
+    // Add user as resident
+    env.transaction(|conn| {
+        use crate::schema::residents::dsl as r;
+        diesel::insert_into(r::residents)
+            .values((r::tg_id.eq(user.id), r::begin_date.eq(diesel::dsl::now)))
+            .execute(conn)
+    })?;
+
+    let mut response = String::new();
+    response.push_str("User ");
+    crate::common::format_user(&mut response, user.id, Some(&user), false);
+    response.push_str(" has been added as a resident.");
+    bot.reply_message(&msg, response)
+        .parse_mode(teloxide::types::ParseMode::Html)
+        .await?;
+
+    Ok(())
+}
+
+async fn cmd_remove_resident(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+    args: String,
+) -> Result<()> {
+    let args = args.trim();
+    if args.is_empty() {
+        bot.reply_message(&msg, "Please provide a Telegram username or ID.")
+            .await?;
+        return Ok(());
+    }
+
+    // Try to find the user by username or ID
+    let user = find_user_by_username_or_id(&env, args)?;
+    let Some(user) = user else {
+        bot.reply_message(&msg, "User not found.").await?;
+        return Ok(());
+    };
+
+    // Check if user is a resident
+    let is_resident = env.transaction(|conn| {
+        use crate::schema::residents::dsl as r;
+        r::residents
+            .filter(r::tg_id.eq(user.id))
+            .filter(r::end_date.is_null())
+            .count()
+            .get_result::<i64>(conn)
+    })? > 0;
+
+    if !is_resident {
+        let mut response = String::new();
+        response.push_str("User ");
+        crate::common::format_user(&mut response, user.id, Some(&user), false);
+        response.push_str(" is not a resident.");
+        bot.reply_message(&msg, response)
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .await?;
+        return Ok(());
+    }
+
+    // Remove user from residents
+    let rows_affected = env.transaction(|conn| {
+        use crate::schema::residents::dsl as r;
+        diesel::update(r::residents)
+            .filter(r::tg_id.eq(user.id))
+            .filter(r::end_date.is_null())
+            .set(r::end_date.eq(diesel::dsl::now))
+            .execute(conn)
+    })?;
+
+    let mut response = String::new();
+    if rows_affected > 0 {
+        response.push_str("User ");
+        crate::common::format_user(&mut response, user.id, Some(&user), false);
+        response.push_str(" has been removed from residents.");
+        bot.reply_message(&msg, response)
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .await?;
+    } else {
+        response.push_str("Failed to remove user ");
+        crate::common::format_user(&mut response, user.id, Some(&user), false);
+        response.push_str(" from residents.");
+        bot.reply_message(&msg, response)
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .await?;
+    }
+
+    Ok(())
+}
+
+fn find_user_by_username_or_id(
+    env: &Arc<BotEnv>,
+    username_or_id: &str,
+) -> Result<Option<models::TgUser>> {
+    // Try to parse as ID first
+    if let Ok(user_id) = username_or_id.parse::<u64>() {
+        let user_id = UserId(user_id);
+        let user = env.transaction(|conn| {
+            use crate::schema::tg_users::dsl as t;
+            t::tg_users
+                .filter(t::id.eq(DbUserId::from(user_id)))
+                .first::<models::TgUser>(conn)
+                .optional()
+        })?;
+
+        if user.is_some() {
+            return Ok(user);
+        }
+    }
+
+    // If not found by ID or parsing failed, try as username
+    let username = username_or_id.trim_start_matches('@');
+    let user = env.transaction(|conn| {
+        use crate::schema::tg_users::dsl as t;
+        t::tg_users
+            .filter(t::username.eq(username))
+            .first::<models::TgUser>(conn)
+            .optional()
+    })?;
+
+    Ok(user)
 }
 
 fn is_valid_ssh_key(key: &str) -> bool {
