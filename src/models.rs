@@ -160,6 +160,13 @@ pub struct NewDashboardMessage<'a> {
     pub text: &'a str,
 }
 
+#[derive(Insertable, Queryable, Selectable)]
+#[diesel(table_name = crate::schema::user_ssh_keys)]
+pub struct UserSshKey {
+    pub tg_id: DbUserId,
+    pub key: String,
+}
+
 // Database option models
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
