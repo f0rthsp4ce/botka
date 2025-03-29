@@ -17,7 +17,7 @@ use teloxide::utils::command::BotCommands;
 use teloxide::utils::html::escape;
 use teloxide::Bot;
 
-use crate::config::Config;
+use crate::config::{Config, Ldap};
 use crate::db::DbUserId;
 use crate::utils::{BotExt, GENERAL_THREAD_ID};
 
@@ -68,6 +68,34 @@ pub trait BotCommandsExtTrait: BotCommands {
     fn command_rules(&self) -> CommandAccessRules;
 }
 
+pub enum LdapClientState {
+    Uninitialized,
+    Initialized(LdapClient),
+}
+
+impl LdapClientState {
+    pub const fn new() -> Self {
+        Self::Uninitialized
+    }
+
+    pub fn get(&mut self) -> Result<&mut LdapClient> {
+        match self {
+            Self::Uninitialized => {
+                Err(anyhow::anyhow!("LdapClient is not yet initialized"))
+            }
+            Self::Initialized(client) => Ok(client),
+        }
+    }
+
+    pub fn set(&mut self, client: LdapClient) {
+        *self = Self::Initialized(client);
+    }
+
+    pub const fn is_initialized(&self) -> bool {
+        matches!(self, Self::Initialized(_))
+    }
+}
+
 /// Bot environment: global state shared between all handlers.
 pub struct BotEnv {
     pub conn: Mutex<SqliteConnection>,
@@ -76,7 +104,7 @@ pub struct BotEnv {
     pub reqwest_client: reqwest::Client,
     pub openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
     // For some reason std mutexes not working in teloxide handlers
-    pub ldap_client: tokio::sync::Mutex<LdapClient>,
+    pub ldap_client: Arc<tokio::sync::Mutex<LdapClientState>>,
 }
 
 impl BotEnv {
@@ -90,8 +118,18 @@ impl BotEnv {
         self.conn().exclusive_transaction(f)
     }
 
-    pub async fn ldap_client(&self) -> tokio::sync::MutexGuard<'_, LdapClient> {
+    pub async fn ldap_client(
+        &self,
+    ) -> tokio::sync::MutexGuard<'_, LdapClientState> {
         self.ldap_client.lock().await
+    }
+
+    pub fn ldap_config(&self) -> Result<&Ldap> {
+        self.config
+            .services
+            .ldap
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("LDAP config not found"))
     }
 }
 
