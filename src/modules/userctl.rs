@@ -452,3 +452,29 @@ fn is_valid_ssh_key(key: &str) -> bool {
             | "ecdsa-sha2-nistp521"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ssh_key_validation() {
+        // Valid keys
+        assert!(is_valid_ssh_key(
+            "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC comment"
+        ));
+        assert!(is_valid_ssh_key(
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGit comment"
+        ));
+        assert!(is_valid_ssh_key(
+            "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAI"
+        ));
+
+        // Invalid keys
+        assert!(!is_valid_ssh_key("invalid-key"));
+        assert!(!is_valid_ssh_key(""));
+        assert!(!is_valid_ssh_key(
+            "ssh-invalid AAAAB3NzaC1yc2EAAAADAQABAAABAQC"
+        ));
+    }
+}
