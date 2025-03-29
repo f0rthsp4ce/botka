@@ -328,7 +328,14 @@ fn scrape_log(
                 line.clear();
                 continue;
             }
-            let update: Update = serde_json::from_str(&line)?;
+            let update: Update = match serde_json::from_str(&line) {
+                Ok(update) => update,
+                Err(e) => {
+                    log::error!("Failed to parse line: {e} {line}");
+                    line.clear();
+                    continue;
+                }
+            };
             modules::tg_scraper::scrape(conn, &update)?;
             modules::resident_tracker::scrape(
                 conn,
