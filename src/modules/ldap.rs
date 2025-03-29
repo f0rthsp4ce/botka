@@ -119,15 +119,14 @@ async fn ldap_register(
         }
     };
 
-    let mut ldap_conn = env.ldap_client().await;
+    let mut ldap_state = env.ldap_client().await;
+    let ldap_conn = ldap_state.get()?;
+    let ldap_config = env.ldap_config()?;
 
     let user =
         msg.from.as_ref().ok_or_else(|| anyhow::anyhow!("No user ID"))?;
 
-    if ldap::get_user(&mut ldap_conn, &env.config.services.ldap, user.id)
-        .await?
-        .is_some()
-    {
+    if ldap::get_user(ldap_conn, ldap_config, user.id).await?.is_some() {
         bot.reply_message(
             &msg,
             "You are already registered in the LDAP database.",
@@ -142,7 +141,7 @@ async fn ldap_register(
     };
 
     let mut ldap_user = ldap::User::new_from_telegram(
-        &env.config.services.ldap,
+        ldap_config,
         user.id,
         &username,
         &args.mail,
@@ -151,15 +150,16 @@ async fn ldap_register(
     let password = PASSWORD_GENERATOR.generate_one().unwrap();
     ldap_user.update_password(ldap::Sha512PasswordHash::new(), &password);
 
-    ldap::add_user(&mut ldap_conn, &env.config.services.ldap, &ldap_user)
-        .await?;
+    ldap::add_user(ldap_conn, ldap_config, &ldap_user).await?;
     ldap::add_user_to_group(
-        &mut ldap_conn,
-        &env.config.services.ldap,
+        ldap_conn,
+        ldap_config,
         &ldap_user,
-        &env.config.services.ldap.attributes.resident_group,
+        &ldap_config.attributes.resident_group,
     )
     .await?;
+
+    drop(ldap_state);
 
     bot.reply_message(&msg, format!("You have been registered in the LDAP database with password: <code>{password}</code>."))
     .parse_mode(teloxide::types::ParseMode::Html)
@@ -183,12 +183,13 @@ async fn ldap_update(
         }
     };
 
-    let mut ldap_conn = env.ldap_client().await;
+    let mut ldap_state = env.ldap_client().await;
+    let ldap_conn = ldap_state.get()?;
+    let ldap_config = env.ldap_config()?;
     let user_id =
         msg.from.as_ref().ok_or_else(|| anyhow::anyhow!("No user ID"))?.id;
     let Some(mut user) =
-        ldap::get_user(&mut ldap_conn, &env.config.services.ldap, user_id)
-            .await?
+        ldap::get_user(ldap_conn, ldap_config, user_id).await?
     else {
         ldap_not_found(bot, msg).await?;
         return Ok(());
@@ -204,7 +205,9 @@ async fn ldap_update(
         user.display_name = Some(display_name);
     }
 
-    ldap::update_user(&mut ldap_conn, &env.config.services.ldap, &user).await?;
+    ldap::update_user(ldap_conn, ldap_config, &user).await?;
+
+    drop(ldap_state);
 
     bot.reply_message(&msg, "Your LDAP settings have been updated.").await?;
     Ok(())
@@ -215,12 +218,14 @@ async fn ldap_reset_password(
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
-    let mut ldap_conn = env.ldap_client().await;
+    let mut ldap_state = env.ldap_client().await;
+    let ldap_conn = ldap_state.get()?;
+    let ldap_config = env.ldap_config()?;
+
     let user_id =
         msg.from.as_ref().ok_or_else(|| anyhow::anyhow!("No user ID"))?.id;
     let Some(mut user) =
-        ldap::get_user(&mut ldap_conn, &env.config.services.ldap, user_id)
-            .await?
+        ldap::get_user(ldap_conn, ldap_config, user_id).await?
     else {
         ldap_not_found(bot, msg).await?;
         return Ok(());
@@ -229,7 +234,9 @@ async fn ldap_reset_password(
     let password = PASSWORD_GENERATOR.generate_one().unwrap();
 
     user.update_password(ldap::Sha512PasswordHash::new(), &password);
-    ldap::update_user(&mut ldap_conn, &env.config.services.ldap, &user).await?;
+    ldap::update_user(ldap_conn, ldap_config, &user).await?;
+
+    drop(ldap_state);
 
     bot.reply_message(
         &msg,
@@ -243,20 +250,18 @@ async fn ldap_reset_password(
 #[allow(dead_code)]
 #[allow(clippy::significant_drop_tightening)]
 async fn ldap_groups(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
-    let mut ldap_conn = env.ldap_client().await;
+    let mut ldap_state = env.ldap_client().await;
+    let ldap_conn = ldap_state.get()?;
+    let ldap_config = env.ldap_config()?;
     let user_id =
         msg.from.as_ref().ok_or_else(|| anyhow::anyhow!("No user ID"))?.id;
-    let Some(user) =
-        ldap::get_user(&mut ldap_conn, &env.config.services.ldap, user_id)
-            .await?
+    let Some(user) = ldap::get_user(ldap_conn, ldap_config, user_id).await?
     else {
         ldap_not_found(bot, msg).await?;
         return Ok(());
     };
 
-    let groups =
-        ldap::get_user_groups(&mut ldap_conn, &env.config.services.ldap, &user)
-            .await?;
+    let groups = ldap::get_user_groups(ldap_conn, ldap_config, &user).await?;
 
     let mut text = "Your LDAP groups:\n".to_string();
     for group in groups {

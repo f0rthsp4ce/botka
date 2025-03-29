@@ -79,7 +79,8 @@ pub struct Services {
     pub home_assistant: HomeAssistant,
     pub wikijs: WikiJs,
     pub openai: OpenAI,
-    pub ldap: Ldap,
+    #[serde(default)]
+    pub ldap: Option<Ldap>,
     pub vortex_of_doom_cam: EspCam,
     pub racovina_cam: EspCam,
 }

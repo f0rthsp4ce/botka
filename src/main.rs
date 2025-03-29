@@ -28,6 +28,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{Context as _, Result};
 use argh::FromArgs;
+use common::LdapClientState;
 use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -149,8 +150,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         .danger_accept_invalid_certs(true)
         .build()?;
 
-    let ldap_client =
-        tokio::sync::Mutex::new(ldap::connect(&config.services.ldap).await?);
+    let ldap_client = Arc::new(tokio::sync::Mutex::new(LdapClientState::new()));
 
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&format!(
@@ -163,7 +163,9 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         ),
         config: Arc::<config::Config>::clone(&config),
         config_path: config_fpath.into(),
-        ldap_client,
+        ldap_client: Arc::<tokio::sync::Mutex<common::LdapClientState>>::clone(
+            &ldap_client,
+        ),
     });
 
     let proxy_addr = tracing_proxy::start().await?;
@@ -226,6 +228,43 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
             bot.clone(),
             cancel.clone(),
         ));
+    }
+
+    if let Some(ldap_config) = &config.services.ldap {
+        // Connect to LDAP server in the background
+        // and store the client in the bot_env
+
+        // Spawn a task to connect to LDAP server
+        let ldap_config = ldap_config.clone();
+        let ldap_client =
+            Arc::<tokio::sync::Mutex<common::LdapClientState>>::clone(
+                &ldap_client,
+            );
+        set.spawn(async move {
+            let mut attempt = 0;
+            loop {
+                attempt += 1;
+                let mut ldap_state = ldap_client.lock().await;
+                if ldap_state.is_initialized() {
+                    log::warn!("LDAP client is already initialized");
+                    return;
+                }
+                match ldap::connect(&ldap_config).await {
+                    Ok(client) => {
+                        ldap_state.set(client);
+                        drop(ldap_state);
+                        log::info!("Connected to LDAP server");
+                    }
+                    Err(e) => {
+                        let to_wait =
+                            std::time::Duration::from_secs(5 * attempt);
+                        log::warn!("Failed to connect to LDAP server: {e}");
+                        log::warn!("Retrying in {to_wait:?}");
+                        tokio::time::sleep(to_wait).await;
+                    }
+                }
+            }
+        });
     }
 
     set.spawn(web_srv::run(
