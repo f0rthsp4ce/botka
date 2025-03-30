@@ -259,6 +259,8 @@ function mkGraph(
   event_("2022-03-26", "open", "t.me/f0rthsp4ce/8")
   event_("2023-03-26", "1y", "t.me/f0rthsp4ce/103")
   event_("2023-07-01", "$25", "t.me/f0rthsp4ce/170")
+  event_("2024-03-26", "2y", "-")
+  event_("2025-03-26", "3y", "-")
 
   // Add logo
   const jsDomLogo = JSDOM.fragment(logo)
