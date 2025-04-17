@@ -234,10 +234,10 @@ async fn classify(
     let text_option = textify_message(msg);
 
     if env.config.services.openai.disable {
-        return match text_option {
-            Some(text) => classify_dumb(&text),
-            None => Ok(ClassificationResult::Unknown),
-        };
+        return text_option.map_or_else(
+            || Ok(ClassificationResult::Unknown),
+            |text| classify_dumb(&text),
+        );
     }
 
     let text = text_option.unwrap_or_default();
