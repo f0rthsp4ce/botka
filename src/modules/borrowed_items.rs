@@ -262,7 +262,7 @@ fn classify_dumb(text: &str) -> Result<ClassificationResult> {
     Ok(ClassificationResult::Took(items))
 }
 
-const MODEL: &str = "gpt-4.1-nano";
+const MODEL: &str = "gpt-4.1";
 const METRIC_NAME: &str = "botka_openai_used_tokens_total";
 
 pub fn register_metrics() {
