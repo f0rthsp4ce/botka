@@ -12,7 +12,6 @@ use hyper::service::service_fn;
 use hyper::{Request as HyperRequest, Response as HyperResponse, StatusCode};
 use hyper_util::rt::TokioIo;
 use itertools::Itertools as _;
-use serde_json;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -468,7 +467,7 @@ impl MockServer {
                     accepted = listener.accept() => {
                         match accepted {
                             Ok((tcp_stream, remote_addr)) => {
-                                log::debug!("MockServer accepted connection from {}", remote_addr);
+                                log::debug!("MockServer accepted connection from {remote_addr}");
                                 let io = TokioIo::new(tcp_stream);
                                 let data_for_conn = Arc::clone(&data_clone);
 
@@ -482,7 +481,7 @@ impl MockServer {
                                             let body_bytes = match req.into_body().collect().await {
                                                 Ok(collected) => collected.to_bytes(),
                                                 Err(e) => {
-                                                    log::error!("Failed to read mock request body: {}", e);
+                                                    log::error!("Failed to read mock request body: {e}");
                                                     let response = HyperResponse::builder()
                                                         .status(StatusCode::BAD_REQUEST)
                                                         .body(Full::new(Bytes::from("Bad Request")))
@@ -494,7 +493,7 @@ impl MockServer {
                                             let body_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
                                                 Ok(val) => val,
                                                 Err(e) => {
-                                                    log::error!("Failed to parse mock request body JSON: {}", e);
+                                                    log::error!("Failed to parse mock request body JSON: {e}");
                                                     let response = HyperResponse::builder()
                                                         .status(StatusCode::BAD_REQUEST)
                                                         .body(Full::new(Bytes::from("Bad Request")))
@@ -503,22 +502,19 @@ impl MockServer {
                                                 }
                                             };
 
-                                            let req_query = match body_json.get("query").and_then(|q| q.as_str()) {
-                                                 Some(q) => q,
-                                                 None => {
+                                            let Some(req_query) = body_json.get("query").and_then(|q| q.as_str()) else {
                                                       log::error!("Missing or invalid 'query' field in mock request body");
                                                       let response = HyperResponse::builder()
                                                         .status(StatusCode::BAD_REQUEST)
                                                         .body(Full::new(Bytes::from("Bad Request")))
                                                         .unwrap();
                                                     return Ok::<_, Infallible>(response);
-                                                 }
                                             };
 
                                             let data_guard = data.lock().expect("Mutex poisoned");
                                             for it in &*data_guard {
                                                 if req_query == it.query {
-                                                    log::debug!("MockServer matched query: {}", req_query);
+                                                    log::debug!("MockServer matched query: {req_query}");
                                                     let response = HyperResponse::builder()
                                                         .status(StatusCode::OK)
                                                         .header(hyper::header::CONTENT_TYPE, "application/json")
@@ -534,17 +530,17 @@ impl MockServer {
                                     });
 
                                     if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
-                                       let is_io_error = err.source().map_or(false, |source| source.is::<std::io::Error>());
+                                       let is_io_error = err.source().is_some_and(|source| source.is::<std::io::Error>());
                                         if !err.is_incomplete_message() && !is_io_error {
-                                            log::error!("Error serving mock connection from {}: {}", remote_addr, err);
+                                            log::error!("Error serving mock connection from {remote_addr}: {err}");
                                         } else {
-                                            log::debug!("Mock connection closed or IO error from {}: {}", remote_addr, err);
+                                            log::debug!("Mock connection closed or IO error from {remote_addr}: {err}");
                                         }
                                     }
                                 });
                             }
                             Err(e) => {
-                                log::error!("MockServer failed to accept connection: {}", e);
+                                log::error!("MockServer failed to accept connection: {e}");
                             }
                         }
                     }
@@ -580,7 +576,7 @@ impl MockServer {
     async fn stop(self) {
         let _ = self.stop.send(());
         if let Err(e) = self.server_handle.await {
-            log::error!("MockServer task panicked: {:?}", e);
+            log::error!("MockServer task panicked: {e:?}");
         } else {
             log::debug!("MockServer stopped successfully.");
         }
