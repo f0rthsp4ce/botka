@@ -9,8 +9,13 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use async_openai::types::{
-    ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
-    ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
+    ChatCompletionRequestMessage, ChatCompletionRequestMessageContentPartImage,
+    ChatCompletionRequestMessageContentPartText,
+    ChatCompletionRequestSystemMessageArgs,
+    ChatCompletionRequestUserMessageArgs,
+    ChatCompletionRequestUserMessageContent,
+    ChatCompletionRequestUserMessageContentPart,
+    CreateChatCompletionRequestArgs, ImageDetail, ImageUrl,
 };
 use chrono::DateTime;
 use diesel::prelude::*;
@@ -18,8 +23,8 @@ use itertools::Itertools;
 use tap::Tap as _;
 use teloxide::prelude::*;
 use teloxide::types::{
-    InlineKeyboardButton, InlineKeyboardMarkup, MediaKind, MessageId,
-    MessageKind, ParseMode, ReplyMarkup, User,
+    InlineKeyboardButton, InlineKeyboardMarkup, MessageId, ParseMode,
+    ReplyMarkup, User,
 };
 use teloxide::utils::html;
 
@@ -45,8 +50,9 @@ async fn handle_message(
     msg: Message,
 ) -> Result<()> {
     let Some(user) = msg.from.as_ref() else { return Ok(()) };
-    let Some(text) = textify_message(&msg) else { return Ok(()) };
-    let item_names = match classify(Arc::clone(&env), &text).await? {
+
+    let item_names = match classify(bot.clone(), Arc::clone(&env), &msg).await?
+    {
         ClassificationResult::Took(items) => items,
         ClassificationResult::Returned => return Ok(()),
         ClassificationResult::Unknown => return Ok(()),
@@ -221,14 +227,26 @@ enum ClassificationResult {
 }
 
 async fn classify(
+    bot: Bot,
     env: Arc<BotEnv>,
-    text: &str,
+    msg: &Message,
 ) -> Result<ClassificationResult> {
+    let text_option = textify_message(msg);
+
     if env.config.services.openai.disable {
-        classify_dumb(text)
-    } else {
-        classify_openai(env, text).await
+        return match text_option {
+            Some(text) => classify_dumb(&text),
+            None => Ok(ClassificationResult::Unknown),
+        };
     }
+
+    let text = text_option.unwrap_or_default();
+
+    if text.is_empty() && msg.photo().is_none() {
+        return Ok(ClassificationResult::Unknown);
+    }
+
+    classify_openai(bot, env, msg, &text).await
 }
 
 #[allow(clippy::unnecessary_wraps)] // for consistency
@@ -237,6 +255,7 @@ fn classify_dumb(text: &str) -> Result<ClassificationResult> {
         Some(text) => text.trim().split(' ').map(|s| s.to_string()).collect(),
         None => return Ok(ClassificationResult::Unknown),
     };
+    let items = items.into_iter().filter(|s| !s.is_empty()).collect_vec();
     if items.is_empty() {
         return Ok(ClassificationResult::Unknown);
     }
@@ -264,9 +283,40 @@ pub fn register_metrics() {
 }
 
 async fn classify_openai(
+    bot: Bot,
     env: Arc<BotEnv>,
+    msg: &Message,
     text: &str,
 ) -> Result<ClassificationResult> {
+    let mut message_parts =
+        vec![ChatCompletionRequestUserMessageContentPart::Text(
+            ChatCompletionRequestMessageContentPartText {
+                text: text.to_string(),
+            },
+        )];
+
+    if let Some(photos) = msg.photo() {
+        if let Some(largest_photo) = photos.last() {
+            let file = bot.get_file(&largest_photo.file.id).await?;
+            let file_url = format!(
+                "https://api.telegram.org/file/bot{}/{}",
+                bot.token(),
+                file.path
+            );
+
+            message_parts.push(
+                ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                    ChatCompletionRequestMessageContentPartImage {
+                        image_url: ImageUrl {
+                            url: file_url,
+                            detail: Some(ImageDetail::Auto),
+                        },
+                    },
+                ),
+            );
+        }
+    }
+
     let request = CreateChatCompletionRequestArgs::default()
         .max_tokens(256u16)
         .model(MODEL)
@@ -278,17 +328,21 @@ async fn classify_openai(
             ),
             ChatCompletionRequestMessage::User(
                 ChatCompletionRequestUserMessageArgs::default()
-                    .content(text)
+                    .content(ChatCompletionRequestUserMessageContent::Array(
+                        message_parts,
+                    ))
                     .build()?,
             ),
         ])
         .build()?;
+
     let response = env
         .openai_client
         .chat()
         .create(request)
         .await
         .tap(|r| crate::metrics::update_service("openai", r.is_ok()))?;
+
     if let Some(usage) = response.usage {
         metrics::counter!(
             METRIC_NAME,
@@ -303,15 +357,17 @@ async fn classify_openai(
             "type" => "completion",
         );
     }
+
     let response_text = response
         .choices
         .first()
-        .context("Empty list of choices")?
+        .context("Empty list of choices from OpenAI")?
         .message
         .content
         .as_ref()
-        .context("No content in response")?
+        .context("No content in OpenAI response")?
         .as_str();
+
     if response_text == "\"R\"" {
         return Ok(ClassificationResult::Returned);
     }
@@ -319,39 +375,38 @@ async fn classify_openai(
         return Ok(ClassificationResult::Unknown);
     }
     if let Ok(items) = serde_json::from_str::<Vec<String>>(response_text) {
+        let items = items.into_iter().filter(|s| !s.is_empty()).collect_vec();
         if !items.is_empty() {
             return Ok(ClassificationResult::Took(items));
         }
     }
+
     Ok(ClassificationResult::Unknown)
 }
 
 /// Convert a message into a text suitable for `OpenAI` API.
 fn textify_message(msg: &Message) -> Option<String> {
     let mut result = String::new();
-    match &msg.kind {
-        MessageKind::Common(msg_common) => match msg_common.media_kind {
-            MediaKind::Photo(_) => result.push_str("[photo]\n"),
-            MediaKind::Text(_) => (),
-            _ => result.push_str("[media]\n"),
-        },
-        _ => return None,
-    }
     if let Some(text) = msg.text() {
         result.push_str(text);
     }
     if let Some(caption) = msg.caption() {
+        if !result.is_empty() && !caption.is_empty() {
+            result.push('\n');
+        }
         result.push_str(caption);
     }
     if result.is_empty() {
-        return None;
+        None
+    } else {
+        Some(result)
     }
-    Some(result)
 }
 
 fn make_text(user: &User, items: &[models::BorrowedItem]) -> String {
     let mut text = String::new();
     let mut prev_date: Option<DateTime<_>> = None;
+
     for (name, returned) in items
         .iter()
         .filter_map(|i| Some((i.name.as_str(), i.returned?)))
@@ -372,6 +427,7 @@ fn make_text(user: &User, items: &[models::BorrowedItem]) -> String {
         }
         text.push_str(&html::escape(name));
     }
+
     if text.is_empty() {
         text.push_str(&html::user_mention(user.id, &user.full_name()));
         text.push_str(", press a button to mark an item as returned.");
@@ -417,19 +473,18 @@ fn balance_columns<T>(
 }
 
 const PROMPT: &str = r#"""
-Classify messages in a thread about taking and returning items.
+Classify messages (which may include text and an image) in a thread about taking and returning items.
 Respond in a JSON format.
 
 If an user took an item or items, respond with an array of item names, in a nominative case (именительный падеж), e.g. `["hammer","screwdriver"]`.
-Do not put an array into an object.
+Extract item names from the text and/or image provided.
+Do not put the array into an object, just respond with the array itself.
 Similar items could be grouped.
 Make it concise as possible.
-If item name is not clear from the message, use empty string.
-Generic item names like "a thing" or "an item" is acceptable.
+If item name is not clear from the message, use an empty string `""` within the array if other items are present, or return `null` if no items can be identified. Exclude empty strings from the final array if possible.
+Generic item names like "a thing" or "an item" are acceptable if specific names aren't available.
 
-If an user attaches a photo (denoted by `[photo]`), it is likely that it contains a borrowed item.
-
-If an user returned an item, respond with string `"R"`, but only if an user did not took any.
+If an user returned an item, respond with string `"R"`, but ONLY if the message indicates *returning* and does not mention taking any *new* items.
 
 If a message does not contain any information about taking or returning items, respond with `null`.
 """#;
