@@ -127,6 +127,7 @@
               pkgs.nodePackages.prettier
               pkgs.ruff
               pkgs.statix
+              pkgs.cargo-deny
             ] ++ buildDeps ++ baseRuntimeDeps;
             PRETTIER_PLUGINS =
               "--plugin ${pkgs.nodePackages.prettier-plugin-toml}/lib/node_modules/prettier-plugin-toml/lib/api.js";

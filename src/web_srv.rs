@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use diesel::prelude::*;
 use itertools::Itertools;
 use metrics_exporter_prometheus::PrometheusHandle;
-use salvo::conn::TcpListener;
+use salvo::conn::tcp::TcpListener;
+use salvo::server::ServerHandle;
 use salvo::writing::{Json, Text};
 use salvo::{Listener, Router, Server};
 use salvo_oapi::{endpoint, OpenApi};
@@ -75,14 +77,20 @@ pub async fn run(
 
     let router = router.unshift(doc.into_router("/openapi.json"));
 
-    let listener = TcpListener::new(config.server_addr).bind().await;
-    Server::new(listener)
-        .serve_with_graceful_shutdown(
-            router,
-            async move { cancel.cancelled().await },
-            None,
-        )
-        .await;
+    let acceptor = TcpListener::new(config.server_addr).bind().await;
+
+    let server = Server::new(acceptor);
+    let handle: ServerHandle = server.handle();
+
+    tokio::spawn(async move {
+        server.serve(router).await;
+    });
+
+    cancel.cancelled().await;
+
+    log::info!("Graceful shutdown initiated...");
+    handle.stop_graceful(Some(Duration::from_secs(60)));
+    log::info!("Server stopped gracefully.");
 }
 
 #[salvo::prelude::handler]
@@ -112,13 +120,19 @@ async fn get_index() -> Text<String> {
 #[endpoint()]
 async fn get_metrics() -> String {
     let state = state();
-    crate::metrics::refresh(&mut state.conn.lock().unwrap());
+    let mut conn_guard =
+        state.conn.lock().expect("Failed to lock DB connection mutex");
+    crate::metrics::refresh(&mut conn_guard);
+    drop(conn_guard);
     state.prometheus.render()
 }
 
 /// Get a list of current residents.
 #[endpoint()]
 async fn get_residents_v0() -> Json<Vec<models::DataResident>> {
+    let state = state();
+    let mut conn_guard =
+        state.conn.lock().expect("Failed to lock DB connection mutex");
     let residents: Vec<(DbUserId, models::TgUser)> = schema::residents::table
         .filter(schema::residents::end_date.is_null())
         .inner_join(
@@ -127,10 +141,11 @@ async fn get_residents_v0() -> Json<Vec<models::DataResident>> {
         )
         .order(schema::residents::begin_date.desc())
         .select((schema::residents::tg_id, schema::tg_users::all_columns))
-        .load(&mut *state().conn.lock().unwrap())
-        .unwrap();
+        .load(&mut *conn_guard)
+        .expect("Failed to load residents");
+    drop(conn_guard);
 
-    let residents = residents
+    let residents_data = residents
         .into_iter()
         .map(|(id, user)| models::DataResident {
             id: id.into(),
@@ -140,23 +155,29 @@ async fn get_residents_v0() -> Json<Vec<models::DataResident>> {
         })
         .collect_vec();
 
-    Json(residents)
+    Json(residents_data)
 }
 
 /// Get a list of current and past residents.
 /// The same resident may appear multiple times if they have left and returned.
 #[endpoint()]
 async fn get_all_residents_v0() -> Json<Vec<models::Resident>> {
+    let state = state();
+    let mut conn_guard =
+        state.conn.lock().expect("Failed to lock DB connection mutex");
     schema::residents::table
         .order(schema::residents::begin_date.desc())
-        .load(&mut *state().conn.lock().unwrap())
+        .load(&mut *conn_guard)
         .map(Json)
-        .unwrap()
+        .expect("Failed to load all residents")
 }
 
 /// Get all SSH keys from active residents.
 #[endpoint()]
 async fn get_all_ssh_keys_v0() -> Json<HashMap<String, Vec<String>>> {
+    let state = state();
+    let mut conn_guard =
+        state.conn.lock().expect("Failed to lock DB connection mutex");
     // Get all SSH keys for active residents
     let ssh_keys: Vec<String> = schema::user_ssh_keys::table
         .inner_join(
@@ -165,8 +186,9 @@ async fn get_all_ssh_keys_v0() -> Json<HashMap<String, Vec<String>>> {
         )
         .filter(schema::residents::end_date.is_null())
         .select(schema::user_ssh_keys::key)
-        .load(&mut *state().conn.lock().unwrap())
+        .load(&mut *conn_guard)
         .unwrap_or_default();
+    drop(conn_guard);
 
     // Format: {"root": ["key1", "key2", ...]}
     let mut result = HashMap::new();
@@ -178,6 +200,9 @@ async fn get_all_ssh_keys_v0() -> Json<HashMap<String, Vec<String>>> {
 /// Get SSH keys grouped by username from active residents.
 #[endpoint()]
 async fn get_ssh_keys_by_user_v0() -> Json<HashMap<String, Vec<String>>> {
+    let state = state();
+    let mut conn_guard =
+        state.conn.lock().expect("Failed to lock DB connection mutex");
     // Get all SSH keys, usernames, and resident status
     let ssh_keys: Vec<(Option<String>, String)> = schema::user_ssh_keys::table
         .inner_join(
@@ -190,14 +215,15 @@ async fn get_ssh_keys_by_user_v0() -> Json<HashMap<String, Vec<String>>> {
         )
         .filter(schema::residents::end_date.is_null())
         .select((schema::tg_users::username, schema::user_ssh_keys::key))
-        .load(&mut *state().conn.lock().unwrap())
+        .load(&mut *conn_guard)
         .unwrap_or_default();
+    drop(conn_guard);
 
     // Group SSH keys by username
     let mut result = HashMap::new();
     for (username, key) in ssh_keys {
         result
-            .entry(username.unwrap_or_default())
+            .entry(username.unwrap_or_else(|| "unknown".to_string()))
             .or_insert_with(Vec::new)
             .push(key);
     }

@@ -9,7 +9,8 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use async_openai::types::{
-    ChatCompletionRequestMessageArgs, CreateChatCompletionRequestArgs,
+    ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
+    ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
 };
 use chrono::DateTime;
 use diesel::prelude::*;
@@ -270,14 +271,16 @@ async fn classify_openai(
         .max_tokens(256u16)
         .model(MODEL)
         .messages([
-            ChatCompletionRequestMessageArgs::default()
-                .role(async_openai::types::Role::System)
-                .content(PROMPT.trim())
-                .build()?,
-            ChatCompletionRequestMessageArgs::default()
-                .role(async_openai::types::Role::User)
-                .content(text)
-                .build()?,
+            ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessageArgs::default()
+                    .content(PROMPT.trim())
+                    .build()?,
+            ),
+            ChatCompletionRequestMessage::User(
+                ChatCompletionRequestUserMessageArgs::default()
+                    .content(text)
+                    .build()?,
+            ),
         ])
         .build()?;
     let response = env

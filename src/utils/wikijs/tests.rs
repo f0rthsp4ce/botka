@@ -1,10 +1,19 @@
+use std::convert::Infallible;
+use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use bytes::Bytes;
 use chrono::DateTime;
-use hyper::{Body, Response, Server};
+use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming as HyperIncomingBody;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Request as HyperRequest, Response as HyperResponse, StatusCode};
+use hyper_util::rt::TokioIo;
 use itertools::Itertools as _;
-use tap::Pipe as _;
+use serde_json;
+use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
@@ -12,7 +21,7 @@ use super::{get_wikijs_updates, PageId, VersionId, WikiJsUpdateState};
 
 #[tokio::test]
 async fn test_updates_none() {
-    let mock_server = MockServer::start();
+    let mock_server = MockServer::start().await; // start теперь async
 
     // Initial update
     mock_server.add_query_response(
@@ -65,7 +74,7 @@ async fn test_updates_none() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_updates_edited() {
-    let mock_server = MockServer::start();
+    let mock_server = MockServer::start().await;
 
     mock_server.add_query_response(
         "{\
@@ -179,7 +188,7 @@ async fn test_updates_edited() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_updates_edited_multiple() {
-    let mock_server = MockServer::start();
+    let mock_server = MockServer::start().await;
 
     mock_server.add_query_response(
         "{\
@@ -342,7 +351,7 @@ async fn test_updates_edited_multiple() {
 
 #[tokio::test]
 async fn test_updates_new_page_added() {
-    let mock_server = MockServer::start();
+    let mock_server = MockServer::start().await;
 
     mock_server.add_query_response(
         "{\
@@ -422,11 +431,12 @@ fn make_update_state(
 struct MockServer {
     stop: oneshot::Sender<()>,
     addr: SocketAddr,
-    server: JoinHandle<()>,
+    server_handle: JoinHandle<()>, // Переименовано для ясности
     data: Arc<Mutex<Vec<MockQueryResponse>>>,
 }
 
 /// Predefined response for a GraphQL query.
+#[derive(Debug)]
 struct MockQueryResponse {
     query: String,
     #[allow(dead_code)] // TODO: check params
@@ -435,61 +445,115 @@ struct MockQueryResponse {
 }
 
 impl MockServer {
-    fn start() -> Self {
+    async fn start() -> Self {
         let data = Arc::new(Mutex::new(Vec::<MockQueryResponse>::new()));
 
-        let data_clone = Arc::clone(&data);
-        let make_svc = hyper::service::make_service_fn(move |_| {
-            let data = Arc::clone(&data_clone);
-            async move {
-                Ok::<_, hyper::Error>(hyper::service::service_fn(move |req| {
-                    let data = Arc::clone(&data);
-                    async move {
-                        assert_eq!(*req.method(), hyper::Method::POST);
-                        assert_eq!(req.uri().path(), "/graphql");
+        let listener =
+            TcpListener::bind(&SocketAddr::from(([127, 0, 0, 1], 0)))
+                .await
+                .expect("Failed to bind mock server");
+        let addr = listener.local_addr().expect("Failed to get local address");
 
-                        let body = hyper::body::to_bytes(req.into_body())
-                            .await
-                            .expect("Failed to read body")
-                            .pipe_ref(|x| {
-                                serde_json::from_slice::<serde_json::Value>(x)
-                            })
-                            .expect("Failed to parse body");
-
-                        let req_query = body
-                            .get("query")
-                            .expect("Missing query")
-                            .as_str()
-                            .expect("Invalid query");
-
-                        for it in &*data.lock().unwrap() {
-                            if req_query != it.query {
-                                continue;
-                            }
-                            return Ok::<_, hyper::Error>(Response::new(
-                                Body::from(it.response.to_string()),
-                            ));
-                        }
-
-                        panic!("Can't match query: {req_query:#?}");
-                    }
-                }))
-            }
-        });
-        let server = Server::bind(&([127, 0, 0, 1], 0).into()).serve(make_svc);
-        let addr = server.local_addr();
         let (tx, rx) = oneshot::channel::<()>();
-        let graceful = server.with_graceful_shutdown(async {
-            rx.await.ok();
+
+        let data_clone = Arc::clone(&data);
+        let server_handle = tokio::spawn(async move {
+            let mut rx = rx;
+            loop {
+                tokio::select! {
+                    _ = &mut rx => {
+                        log::debug!("MockServer received shutdown signal.");
+                        break;
+                    }
+                    accepted = listener.accept() => {
+                        match accepted {
+                            Ok((tcp_stream, remote_addr)) => {
+                                log::debug!("MockServer accepted connection from {}", remote_addr);
+                                let io = TokioIo::new(tcp_stream);
+                                let data_for_conn = Arc::clone(&data_clone);
+
+                                tokio::spawn(async move {
+                                    let service = service_fn(move |req: HyperRequest<HyperIncomingBody>| {
+                                        let data = Arc::clone(&data_for_conn);
+                                        async move {
+                                            assert_eq!(*req.method(), hyper::Method::POST);
+                                            assert_eq!(req.uri().path(), "/graphql");
+
+                                            let body_bytes = match req.into_body().collect().await {
+                                                Ok(collected) => collected.to_bytes(),
+                                                Err(e) => {
+                                                    log::error!("Failed to read mock request body: {}", e);
+                                                    let response = HyperResponse::builder()
+                                                        .status(StatusCode::BAD_REQUEST)
+                                                        .body(Full::new(Bytes::from("Bad Request")))
+                                                        .unwrap();
+                                                    return Ok::<_, Infallible>(response);
+                                                }
+                                            };
+
+                                            let body_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+                                                Ok(val) => val,
+                                                Err(e) => {
+                                                    log::error!("Failed to parse mock request body JSON: {}", e);
+                                                    let response = HyperResponse::builder()
+                                                        .status(StatusCode::BAD_REQUEST)
+                                                        .body(Full::new(Bytes::from("Bad Request")))
+                                                        .unwrap();
+                                                    return Ok::<_, Infallible>(response);
+                                                }
+                                            };
+
+                                            let req_query = match body_json.get("query").and_then(|q| q.as_str()) {
+                                                 Some(q) => q,
+                                                 None => {
+                                                      log::error!("Missing or invalid 'query' field in mock request body");
+                                                      let response = HyperResponse::builder()
+                                                        .status(StatusCode::BAD_REQUEST)
+                                                        .body(Full::new(Bytes::from("Bad Request")))
+                                                        .unwrap();
+                                                    return Ok::<_, Infallible>(response);
+                                                 }
+                                            };
+
+                                            let data_guard = data.lock().expect("Mutex poisoned");
+                                            for it in &*data_guard {
+                                                if req_query == it.query {
+                                                    log::debug!("MockServer matched query: {}", req_query);
+                                                    let response = HyperResponse::builder()
+                                                        .status(StatusCode::OK)
+                                                        .header(hyper::header::CONTENT_TYPE, "application/json")
+                                                        .body(Full::new(Bytes::from(it.response.to_string())))
+                                                        .unwrap();
+                                                    return Ok::<_, Infallible>(response);
+                                                }
+                                            }
+                                            drop(data_guard);
+
+                                            panic!("MockServer can't match query: {req_query:#?}");
+                                        }
+                                    });
+
+                                    if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
+                                       let is_io_error = err.source().map_or(false, |source| source.is::<std::io::Error>());
+                                        if !err.is_incomplete_message() && !is_io_error {
+                                            log::error!("Error serving mock connection from {}: {}", remote_addr, err);
+                                        } else {
+                                            log::debug!("Mock connection closed or IO error from {}: {}", remote_addr, err);
+                                        }
+                                    }
+                                });
+                            }
+                            Err(e) => {
+                                log::error!("MockServer failed to accept connection: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+            log::debug!("MockServer task finished.");
         });
-        Self {
-            stop: tx,
-            addr,
-            server: tokio::spawn(async move {
-                graceful.await.unwrap();
-            }),
-            data,
-        }
+
+        Self { stop: tx, addr, server_handle, data }
     }
 
     fn endpoint(&self) -> String {
@@ -502,7 +566,7 @@ impl MockServer {
         params: &[(&str, &str)],
         response: serde_json::Value,
     ) {
-        self.data.lock().unwrap().push(MockQueryResponse {
+        self.data.lock().expect("Mutex poisoned").push(MockQueryResponse {
             query: query.to_string(),
             params: params
                 .iter()
@@ -514,7 +578,11 @@ impl MockServer {
     }
 
     async fn stop(self) {
-        self.stop.send(()).unwrap();
-        self.server.await.unwrap();
+        let _ = self.stop.send(());
+        if let Err(e) = self.server_handle.await {
+            log::error!("MockServer task panicked: {:?}", e);
+        } else {
+            log::debug!("MockServer stopped successfully.");
+        }
     }
 }
