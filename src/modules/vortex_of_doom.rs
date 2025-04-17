@@ -27,11 +27,11 @@ async fn vortex_of_doom_internal(
             .upcoming(Utc)
             .next()
             .ok_or_else(|| anyhow::anyhow!("failed to get next schedule"))?;
-        debug!("Next execution time {}", next_run);
+        debug!("Next execution time {next_run}");
 
         let now = Utc::now();
         let diff = next_run - now;
-        debug!("Waiting for next schedule {}", diff);
+        debug!("Waiting for next schedule {diff}");
 
         sleep(diff.to_std()?).await;
 
