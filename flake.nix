@@ -2,7 +2,7 @@
   description = "F0RTHSP4CE Telegram bot";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     crane.url = "github:ipetkov/crane";
     nix-filter.url = "github:numtide/nix-filter";
     nixpkgs-mozilla.url = "github:mozilla/nixpkgs-mozilla";
@@ -129,8 +129,6 @@
               pkgs.statix
               pkgs.cargo-deny
             ] ++ buildDeps ++ baseRuntimeDeps;
-            PRETTIER_PLUGINS =
-              "--plugin ${pkgs.nodePackages.prettier-plugin-toml}/lib/node_modules/prettier-plugin-toml/lib/api.js";
           };
         };
     };
