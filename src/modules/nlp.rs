@@ -19,7 +19,7 @@ use async_openai::types::{
 };
 use chrono::{Duration, Local, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
-use log::debug;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use tap::Tap;
 use teloxide::prelude::*;
@@ -195,9 +195,9 @@ async fn handle_nlp_message(
     .await?;
 
     // 4. Send the final response to the user
-    // Only use thread_id if the chat supports threads
     let reply_builder = bot
-        .reply_message(&msg, escape(&final_response))
+        .send_message(msg.chat.id, escape(&final_response))
+        .reply_to_message_id(msg.id)
         .parse_mode(teloxide::types::ParseMode::Html)
         .disable_web_page_preview(true);
 
