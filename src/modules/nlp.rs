@@ -3,6 +3,9 @@
 //!
 //! This module allows interaction with the bot using natural language instead
 //! of formal commands, triggered by specific keywords.
+//!
+//! Known issues:
+//! - The bot works weirdly in general topic threads of forum. Idk why.
 
 use std::collections::HashMap;
 use std::sync::Arc;
