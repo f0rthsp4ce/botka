@@ -996,7 +996,6 @@ async fn handle_remove_memory(
     Ok("Memory removed successfully.".to_string())
 }
 
-/// Handle execute_command function call
 async fn handle_execute_command(
     bot: &Bot,
     env: &Arc<BotEnv>,
@@ -1021,6 +1020,16 @@ async fn handle_execute_command(
             }
         }
         "needs" => {
+            // Check if user is a resident
+            if !is_resident(
+                &mut env.conn(),
+                &msg.from.clone().expect("empty from user"),
+            ) {
+                return Err(anyhow::anyhow!(
+                    "Non-resident users cannot use the needs command."
+                ));
+            }
+
             // Handle needs command
             match command_needs_text(&env) {
                 Ok(text) => text,
@@ -1034,6 +1043,16 @@ async fn handle_execute_command(
             }
         }
         "need" => {
+            // Check if user is a resident
+            if !is_resident(
+                &mut env.conn(),
+                &msg.from.clone().expect("empty from user"),
+            ) {
+                return Err(anyhow::anyhow!(
+                    "Non-resident users cannot add items to the shopping list."
+                ));
+            }
+
             // Handle need command
             let item = args.arguments.clone().unwrap_or_default();
             match add_items_text(
