@@ -504,7 +504,7 @@ async fn get_relevant_memories(
     Ok(memories)
 }
 
-const PROMPT: &str = r#"""You are a helpful assistant integrated with a Telegram bot called F0BOT (or 'botka').
+const PROMPT: &str = r#"You are a helpful assistant integrated with a Telegram bot called F0BOT (or 'botka').
 
 You are designed to assist users in a chat environment, providing information and executing commands.
 Your responses should be concise and relevant to the user's request.
@@ -553,7 +553,7 @@ Messages are provided in format "<username>: <message text>".
    You call need command with item "printer" and respond with:
    "Added 'printer' to the shopping list. 🛒"
 
-"""#;
+"#;
 
 fn get_chat_completion_tools() -> Vec<ChatCompletionTool> {
     // Define available functions
@@ -753,7 +753,9 @@ async fn process_with_function_calling(
 
     // Add chat history as assistant/user messages
     // Reverse the history since we queried in desc order
-    for entry in history.iter().rev() {
+    // Drop the first message since it is the current one
+    // and we will add it at the end
+    for entry in history.iter().skip(1).rev() {
         if entry.from_user_id.is_none() {
             // Bot message
             messages.push(
