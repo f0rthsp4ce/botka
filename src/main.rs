@@ -66,7 +66,7 @@ fn version() -> &'static str {
 /// botka
 #[derive(FromArgs, PartialEq, Debug)]
 struct Args {
-    #[argh(option, hidden_help = true, long = "-set-revision")]
+    #[argh(option, hidden_help = true, long = "set-revision")]
     set_revision: Option<String>,
 
     #[argh(subcommand)]
