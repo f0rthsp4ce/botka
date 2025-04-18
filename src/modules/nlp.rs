@@ -19,7 +19,7 @@ use async_openai::types::{
 };
 use chrono::{Duration, Local, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
-use log::{debug, info};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use tap::Tap;
 use teloxide::prelude::*;
@@ -32,7 +32,7 @@ use crate::db::{DbChatId, DbThreadId, DbUserId};
 use crate::models::{ChatHistoryEntry, Memory, NewChatHistoryEntry, NewMemory};
 use crate::modules::basic::cmd_status_text;
 use crate::modules::needs::{add_items_text, command_needs_text};
-use crate::utils::{BotExt, GENERAL_THREAD_ID};
+use crate::utils::GENERAL_THREAD_ID;
 
 // Function call definitions
 #[derive(Serialize, Deserialize, Debug)]
