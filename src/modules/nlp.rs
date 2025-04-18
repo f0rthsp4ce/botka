@@ -23,7 +23,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use tap::Tap;
 use teloxide::prelude::*;
-use teloxide::types::{Message, MessageEntityKind, ThreadId};
+use teloxide::types::{ChatAction, Message, MessageEntityKind, ThreadId};
 use teloxide::utils::html::escape;
 use tokio::sync::RwLock;
 
@@ -32,7 +32,7 @@ use crate::db::{DbChatId, DbThreadId, DbUserId};
 use crate::models::{ChatHistoryEntry, Memory, NewChatHistoryEntry, NewMemory};
 use crate::modules::basic::cmd_status_text;
 use crate::modules::needs::{add_items_text, command_needs_text};
-use crate::utils::GENERAL_THREAD_ID;
+use crate::utils::{MessageExt, ResultExt, GENERAL_THREAD_ID};
 
 // Function call definitions
 #[derive(Serialize, Deserialize, Debug)]
@@ -657,6 +657,14 @@ async fn process_with_function_calling(
     if env.config.services.openai.disable {
         anyhow::bail!("OpenAI integration is disabled in config");
     }
+
+    // Send typing action
+    let mut typing_builder = bot.send_chat_action(msg.chat.id, ChatAction::Typing);
+    if let Some(thread_id) = msg.thread_id_ext() {
+        typing_builder = typing_builder.message_thread_id(thread_id);
+    }
+    typing_builder.await
+        .log_error(module_path!(), "send_chat_action fauled");
 
     // Choose the model from config or default to a reasonable one
     let model = &env.config.nlp.model;
