@@ -6,9 +6,6 @@
     crane.url = "github:ipetkov/crane";
     nix-filter.url = "github:numtide/nix-filter";
     nixpkgs-mozilla.url = "github:mozilla/nixpkgs-mozilla";
-
-    crane.inputs.nixpkgs.follows = "nixpkgs";
-    flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
   };
 
   outputs = inputs@{ self, nixpkgs, crane, flake-parts, nix-filter
