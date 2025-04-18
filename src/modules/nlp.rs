@@ -350,161 +350,66 @@ async fn get_relevant_memories(
     let now = Utc::now().naive_utc();
     let yesterday = (Utc::now() - Duration::days(1)).naive_utc();
 
-    let memories = env.transaction(|conn| {
-        // Get active global memories
-        let global_active: Vec<Memory> = crate::schema::memories::table
-            .filter(crate::schema::memories::chat_id.is_null())
-            .filter(crate::schema::memories::expiration_date.gt(now))
-            .load(conn)?;
+    // Fetch all memories that are either active, have null expiration, or expired within the last day
+    let all_memories = env.transaction(|conn| {
+        use diesel::prelude::*;
 
-        // Get active chat-specific memories (for this chat)
-        let chat_active: Vec<Memory> = crate::schema::memories::table
+        use crate::schema::memories;
+
+        // Get memories with null expiration OR expiration > yesterday
+        memories::table
             .filter(
-                crate::schema::memories::chat_id.eq(DbChatId::from(chat_id)),
+                memories::expiration_date
+                    .is_null()
+                    .or(memories::expiration_date.gt(yesterday)),
             )
-            .filter(crate::schema::memories::thread_id.is_null())
-            .filter(crate::schema::memories::expiration_date.gt(now))
-            .load(conn)?;
-
-        // Get active thread-specific memories (for this thread)
-        let thread_active: Vec<Memory> = crate::schema::memories::table
-            .filter(
-                crate::schema::memories::chat_id.eq(DbChatId::from(chat_id)),
-            )
-            .filter(
-                crate::schema::memories::thread_id
-                    .eq(DbThreadId::from(thread_id)),
-            )
-            .filter(crate::schema::memories::expiration_date.gt(now))
-            .load(conn)?;
-
-        // Get recently expired global memories
-        let global_expired: Vec<Memory> = crate::schema::memories::table
-            .filter(crate::schema::memories::chat_id.is_null())
-            .filter(crate::schema::memories::expiration_date.le(now))
-            .filter(crate::schema::memories::expiration_date.gt(yesterday))
-            .load(conn)?;
-
-        // Get recently expired chat-specific memories
-        let chat_expired: Vec<Memory> = crate::schema::memories::table
-            .filter(
-                crate::schema::memories::chat_id.eq(DbChatId::from(chat_id)),
-            )
-            .filter(crate::schema::memories::thread_id.is_null())
-            .filter(crate::schema::memories::expiration_date.le(now))
-            .filter(crate::schema::memories::expiration_date.gt(yesterday))
-            .load(conn)?;
-
-        // Get recently expired thread-specific memories
-        let thread_expired: Vec<Memory> = crate::schema::memories::table
-            .filter(
-                crate::schema::memories::chat_id.eq(DbChatId::from(chat_id)),
-            )
-            .filter(
-                crate::schema::memories::thread_id
-                    .eq(DbThreadId::from(thread_id)),
-            )
-            .filter(crate::schema::memories::expiration_date.le(now))
-            .filter(crate::schema::memories::expiration_date.gt(yesterday))
-            .load(conn)?;
-
-        let mut user_active = Vec::new();
-        let mut user_expired = Vec::new();
-
-        // Get active user-specific global memories (user_id set, chat_id IS NULL)
-        let user_global_active: Vec<Memory> = crate::schema::memories::table
-            .filter(
-                crate::schema::memories::user_id.eq(DbUserId::from(user_id)),
-            ) // Filter by user_id
-            .filter(crate::schema::memories::chat_id.is_null()) // Global scope for this user
-            .filter(crate::schema::memories::expiration_date.gt(now))
-            .load(conn)?;
-        user_active.extend(user_global_active);
-
-        // Get active user-specific chat memories (user_id set, chat_id set, thread_id IS NULL)
-        let user_chat_active: Vec<Memory> = crate::schema::memories::table
-            .filter(
-                crate::schema::memories::user_id.eq(DbUserId::from(user_id)),
-            ) // Filter by user_id
-            .filter(
-                crate::schema::memories::chat_id.eq(DbChatId::from(chat_id)),
-            ) // Filter by chat_id
-            .filter(crate::schema::memories::thread_id.is_null()) // Chat scope for this user (no thread)
-            .filter(crate::schema::memories::expiration_date.gt(now))
-            .load(conn)?;
-        user_active.extend(user_chat_active);
-
-        // Get active user-specific thread memories (user_id set, chat_id set, thread_id set)
-        let user_thread_active: Vec<Memory> = crate::schema::memories::table
-            .filter(
-                crate::schema::memories::user_id.eq(DbUserId::from(user_id)),
-            ) // Filter by user_id
-            .filter(
-                crate::schema::memories::chat_id.eq(DbChatId::from(chat_id)),
-            ) // Filter by chat_id
-            .filter(
-                crate::schema::memories::thread_id
-                    .eq(DbThreadId::from(thread_id)),
-            ) // Filter by thread_id
-            .filter(crate::schema::memories::expiration_date.gt(now))
-            .load(conn)?;
-        user_active.extend(user_thread_active);
-
-        // Get recently expired user-specific global memories
-        let user_global_expired: Vec<Memory> = crate::schema::memories::table
-            .filter(
-                crate::schema::memories::user_id.eq(DbUserId::from(user_id)),
-            )
-            .filter(crate::schema::memories::chat_id.is_null())
-            .filter(crate::schema::memories::expiration_date.le(now))
-            .filter(crate::schema::memories::expiration_date.gt(yesterday))
-            .load(conn)?;
-        user_expired.extend(user_global_expired);
-
-        // Get recently expired user-specific chat memories
-        let user_chat_expired: Vec<Memory> = crate::schema::memories::table
-            .filter(
-                crate::schema::memories::user_id.eq(DbUserId::from(user_id)),
-            )
-            .filter(
-                crate::schema::memories::chat_id.eq(DbChatId::from(chat_id)),
-            )
-            .filter(crate::schema::memories::thread_id.is_null())
-            .filter(crate::schema::memories::expiration_date.le(now))
-            .filter(crate::schema::memories::expiration_date.gt(yesterday))
-            .load(conn)?;
-        user_expired.extend(user_chat_expired);
-
-        // Get recently expired user-specific thread memories
-        let user_thread_expired: Vec<Memory> = crate::schema::memories::table
-            .filter(
-                crate::schema::memories::user_id.eq(DbUserId::from(user_id)),
-            )
-            .filter(
-                crate::schema::memories::chat_id.eq(DbChatId::from(chat_id)),
-            )
-            .filter(
-                crate::schema::memories::thread_id
-                    .eq(DbThreadId::from(thread_id)),
-            )
-            .filter(crate::schema::memories::expiration_date.le(now))
-            .filter(crate::schema::memories::expiration_date.gt(yesterday))
-            .load(conn)?;
-        user_expired.extend(user_thread_expired);
-
-        // Combine all memories
-        let mut all_memories = Vec::new();
-        all_memories.extend(global_active);
-        all_memories.extend(chat_active);
-        all_memories.extend(thread_active);
-        all_memories.extend(global_expired);
-        all_memories.extend(chat_expired);
-        all_memories.extend(thread_expired);
-
-        Ok(all_memories)
+            .load::<Memory>(conn)
     })?;
 
-    Ok(memories)
+    // Now filter the results in Rust code
+    let filtered_memories = all_memories
+        .into_iter()
+        .filter(|memory| {
+            // If expiration_date is None, consider it always active
+            if memory.expiration_date.is_none() {
+                return true;
+            }
+
+            // For non-null expiration dates, check if active or recently expired
+            let expiry = memory.expiration_date.unwrap();
+            let is_active = expiry > now;
+            let is_recently_expired = expiry <= now && expiry > yesterday;
+
+            // Skip if neither active nor recently expired
+            if !is_active && !is_recently_expired {
+                return false;
+            }
+
+            // Check if this is a global memory
+            let is_global = memory.chat_id.is_none();
+
+            // Check if this is a chat-level memory for our chat
+            let is_chat_level = memory.chat_id == Some(DbChatId::from(chat_id))
+                && memory.thread_id.is_none();
+
+            // Check if this is a thread-level memory for our thread
+            let is_thread_level = memory.chat_id
+                == Some(DbChatId::from(chat_id))
+                && memory.thread_id == Some(DbThreadId::from(thread_id));
+
+            // Check if this is a user-specific memory
+            let is_user_specific =
+                memory.user_id == Some(DbUserId::from(user_id));
+
+            // Include if it's a global, chat-level, or thread-level memory (regardless of user)
+            // OR if it's a user-specific memory at any scope level
+            (is_global || is_chat_level || is_thread_level)
+                || (is_user_specific
+                    && (is_global || is_chat_level || is_thread_level))
+        })
+        .collect();
+
+    Ok(filtered_memories)
 }
 
 const PROMPT: &str = r#"You are a helpful assistant integrated with a Telegram bot called F0BOT (or 'botka').
@@ -684,6 +589,7 @@ async fn process_with_function_calling(
     system_prompt.push_str(&format!("Current Date and Time: {}\n\n", now));
 
     // Add memories to the system prompt
+    println!("Memories: {:?}", memories);
     if !memories.is_empty() {
         system_prompt.push_str("## Active Memories\n");
         for memory in memories {
