@@ -243,7 +243,7 @@ pub async fn cmd_status_text(
     } else {
         writeln!(
             &mut text,
-            "No data collected yet. Probably Mikrotik password is incorrect."
+            "No data collected yet. Probably Mikrotik password is incorrect. Tell that to the admin."
         )
         .unwrap();
     }
