@@ -659,12 +659,12 @@ async fn process_with_function_calling(
     }
 
     // Send typing action
-    let mut typing_builder = bot.send_chat_action(msg.chat.id, ChatAction::Typing);
+    let mut typing_builder =
+        bot.send_chat_action(msg.chat.id, ChatAction::Typing);
     if let Some(thread_id) = msg.thread_id_ext() {
         typing_builder = typing_builder.message_thread_id(thread_id);
     }
-    typing_builder.await
-        .log_error(module_path!(), "send_chat_action fauled");
+    typing_builder.await.log_error(module_path!(), "send_chat_action fauled");
 
     // Choose the model from config or default to a reasonable one
     let model = &env.config.nlp.model;
