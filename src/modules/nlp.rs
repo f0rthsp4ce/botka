@@ -17,7 +17,7 @@ use async_openai::types::{
     ChatCompletionToolChoiceOption, ChatCompletionToolType,
     CreateChatCompletionRequestArgs, FunctionObject,
 };
-use chrono::{Duration, Utc};
+use chrono::{Duration, Local, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use log::debug;
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ use teloxide::types::{Message, MessageEntityKind, ThreadId};
 use teloxide::utils::html::escape;
 use tokio::sync::RwLock;
 
-use crate::common::{BotEnv, UpdateHandler};
+use crate::common::{is_resident, BotEnv, UpdateHandler};
 use crate::db::{DbChatId, DbThreadId, DbUserId};
 use crate::models::{ChatHistoryEntry, Memory, NewChatHistoryEntry, NewMemory};
 use crate::modules::basic::cmd_status_text;
@@ -513,22 +513,45 @@ In your response you should use hacker slang and abbreviations, response should 
 DO NOT USE ANY FORMATTING IN RESPONSE. You can use emojis. Answer in user language.
 
 You can execute bot commands or save memories for future reference, or respond directly to users' questions.
-Do not save duplicate memories.
 
 Messages are provided in format "<username>: <message text>".
 
 ## Available Commands
 - status - show space status. Includes information about all residents that are currently in hackerspace.
-- needs - show shopping list
-- need <item> - add an item to the shopping list. Only one item at function call.
+- needs - show shopping list.
+- need <item> - add an item to the shopping list. Only one item at function call. If user wants to add multiple items, you should call this function multiple times.
 
 ## Guidelines
-1. If a user asks to perform a task that corresponds to a known command, use the execute_command function.
+1. If a user asks to perform a task that corresponds to a known command, use the execute_command function with the command name and arguments.
+   - For example, if the user says "I need to buy a new printer", you should call the need command with the item "printer".
+   - If the user asks for space status, use the status command.
 2. If you need to remember information for future reference, use the save_memory function.
+    - Set the memory_text to the information you want to remember.
+    - Set duration_hours to the number of hours the memory should be kept active, or null for persistent memory. Use information about current date and time to determine the duration.
+    - Set chat_specific, thread_specific, and user_specific to true if the memory is specific to the current chat, thread, or user respectively.
+      If user requests for example how do you call him, use user_specific false and duration_hours to null.
+    - If the user doesn't specify a duration or duration cannot be determined, set duration_hours to 24 hours.
+    - If the user doesn't specify a duration but it is clear that the memory should be persistent, set duration_hours to null.
+    - DO NOT SAVE DUPLICATE MEMORIES. If a memory with the same text already exists, do not create a new one.
+    - Be as concise as possible in the memory text. Try to summarize the information.
 3. If you need (or user requests) to remove a previously saved memory, use the remove_memory function with the memory ID.
+    - The memory ID can be found in the memory list.
+    - If the user doesn't specify a memory ID or the ID cannot be determined, ask the user for clarification.
 4. For general questions or inquiries that don't require commands, respond directly.
 5. Be concise in your responses and focus on helping the user complete their task.
 6. Some commands are only available to residents or admins, so your attempt to execute them might fail.
+
+## Examples
+1. User says: "Who is in the hackerspace?"
+   You call status command, and respond with:
+   "There are 3 residents in the hackerspace: @user1, @user2, @user3.
+    cofob said that he will do something with the printer today, but he is not in the hackerspace right now."
+2. User says: "I will be in the hackerspace tomorrow."
+   You call save_memory function with memory_text "User will be in the hackerspace 2025.04.15" and respond with:
+   "Got it! I will remember that you will be in the hackerspace tomorrow."
+3. User says: "I need to buy a new printer."
+   You call need command with item "printer" and respond with:
+   "Added 'printer' to the shopping list. 🛒"
 
 """#;
 
@@ -643,6 +666,11 @@ async fn process_with_function_calling(
 
     // Construct system prompt with memory information
     let mut system_prompt = PROMPT.to_string();
+
+    // Add current date and time
+    let now = Local::now();
+    let now = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    system_prompt.push_str(&format!("Current Date and Time: {}\n\n", now));
 
     // Add memories to the system prompt
     if !memories.is_empty() {
@@ -833,18 +861,46 @@ async fn process_with_function_calling(
                 // Handle the function call and get a result
                 let result = match function.name.as_str() {
                     "save_memory" => {
-                        handle_save_memory(env, msg, &function.arguments)
-                            .await?;
-                        "Memory saved successfully.".to_string()
+                        match handle_save_memory(env, msg, &function.arguments)
+                            .await
+                        {
+                            Ok(r) => r,
+                            Err(e) => {
+                                log::error!("Error saving memory: {}", e);
+                                format!(
+                                    "Error saving memory '{}': {}",
+                                    function.arguments, e
+                                )
+                            }
+                        }
                     }
                     "remove_memory" => {
                         let args: RemoveMemoryArgs =
-                            serde_json::from_str(&function.arguments)?;
-                        handle_remove_memory(env, args.memory_id).await?;
-                        format!(
-                            "Memory with ID {} removed successfully.",
-                            args.memory_id
-                        )
+                            match serde_json::from_str(&function.arguments) {
+                                Ok(args) => args,
+                                Err(e) => {
+                                    log::error!(
+                                        "Error parsing remove_memory args: {}",
+                                        e
+                                    );
+                                    return Err(anyhow::anyhow!(
+                                        "Error parsing remove_memory args: {}",
+                                        e
+                                    ));
+                                }
+                            };
+                        match handle_remove_memory(env, msg, args.memory_id)
+                            .await
+                        {
+                            Ok(r) => r,
+                            Err(e) => {
+                                log::error!("Error removing memory: {}", e);
+                                format!(
+                                    "Error removing memory with ID {}: {}",
+                                    args.memory_id, e
+                                )
+                            }
+                        }
                     }
                     "execute_command" => {
                         let args: ExecuteCommandArgs =
@@ -906,8 +962,26 @@ async fn handle_save_memory(
     env: &Arc<BotEnv>,
     msg: &Message,
     arguments: &str,
-) -> Result<()> {
+) -> Result<String> {
     let args: SaveMemoryArgs = serde_json::from_str(arguments)?;
+
+    // Non-resident users can only save short-term user-specific memories
+    if !is_resident(
+        &mut env.conn(),
+        &msg.from.clone().expect("empty from user"),
+    ) {
+        if !args.user_specific {
+            return Err(anyhow::anyhow!(
+                "Non-resident users can only save user-specific memories."
+            ));
+        }
+        if args.duration_hours.is_none() {
+            return Err(anyhow::anyhow!(
+                "Non-resident users can only save short-term memories (up to {}).", 
+                env.config.nlp.memory_limit
+            ));
+        }
+    }
 
     let now = Utc::now().naive_utc();
     let expiration = if let Some(hours) = args.duration_hours {
@@ -950,13 +1024,31 @@ async fn handle_save_memory(
             .execute(conn)
     })?;
 
-    log::info!("Saved memory: {}", args.memory_text);
+    log::info!(
+        "Saved memory: {} ({:?})",
+        args.memory_text,
+        args.duration_hours
+    );
 
-    Ok(())
+    Ok("Memory saved successfully.".to_string())
 }
 
 /// Handle remove_memory function call
-async fn handle_remove_memory(env: &Arc<BotEnv>, memory_id: i32) -> Result<()> {
+async fn handle_remove_memory(
+    env: &Arc<BotEnv>,
+    msg: &Message,
+    memory_id: i32,
+) -> Result<String> {
+    // Non-residents cannot remove memories
+    if !is_resident(
+        &mut env.conn(),
+        &msg.from.clone().expect("empty from user"),
+    ) {
+        return Err(anyhow::anyhow!(
+            "Non-resident users cannot remove memories."
+        ));
+    }
+
     // Check if memory exists first
     let exists = env.transaction(|conn| {
         let count: i64 = crate::schema::memories::table
@@ -980,7 +1072,7 @@ async fn handle_remove_memory(env: &Arc<BotEnv>, memory_id: i32) -> Result<()> {
 
     log::info!("Removed memory with ID: {}", memory_id);
 
-    Ok(())
+    Ok("Memory removed successfully.".to_string())
 }
 
 /// Handle execute_command function call
