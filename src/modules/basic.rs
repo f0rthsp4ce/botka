@@ -223,12 +223,10 @@ async fn cmd_show_residents_timeline(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_status(
-    bot: Bot,
-    env: Arc<BotEnv>,
-    msg: Message,
-    state: Arc<RwLock<State>>,
-) -> Result<()> {
+pub async fn cmd_status_text(
+    env: &Arc<BotEnv>,
+    state: &Arc<RwLock<State>>,
+) -> Result<String> {
     let mut text = String::new();
 
     if let Some(active_users) = (*state.read().await).active_users() {
@@ -249,6 +247,17 @@ async fn cmd_status(
         )
         .unwrap();
     }
+
+    Ok(text)
+}
+
+async fn cmd_status(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+    state: Arc<RwLock<State>>,
+) -> Result<()> {
+    let text = cmd_status_text(&env, &state).await?;
 
     bot.reply_message(&msg, text)
         .parse_mode(teloxide::types::ParseMode::Html)

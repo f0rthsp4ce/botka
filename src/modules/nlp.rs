@@ -19,15 +19,19 @@ use async_openai::types::{
 };
 use chrono::{Duration, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use tap::Tap;
 use teloxide::prelude::*;
 use teloxide::types::{Message, MessageEntityKind, ThreadId};
 use teloxide::utils::html::escape;
+use tokio::sync::RwLock;
 
 use crate::common::{BotEnv, UpdateHandler};
 use crate::db::{DbChatId, DbThreadId, DbUserId};
 use crate::models::{ChatHistoryEntry, Memory, NewChatHistoryEntry, NewMemory};
+use crate::modules::basic::cmd_status_text;
+use crate::modules::needs::{add_items_text, command_needs_text};
 use crate::utils::{BotExt, GENERAL_THREAD_ID};
 
 // Function call definitions
@@ -169,6 +173,7 @@ fn has_mentions_but_not_bot(msg: &Message, env: &Arc<BotEnv>) -> bool {
 async fn handle_nlp_message(
     bot: Bot,
     env: Arc<BotEnv>,
+    mac_state: Arc<RwLock<super::mac_monitoring::State>>,
     msg: Message,
 ) -> Result<()> {
     // 1. Get chat history
@@ -184,9 +189,10 @@ async fn handle_nlp_message(
     .await?;
 
     // 3. Process with OpenAI using the proper function calling protocol
-    let final_response =
-        process_with_function_calling(&bot, &env, &msg, &history, &memories)
-            .await?;
+    let final_response = process_with_function_calling(
+        &bot, &env, &mac_state, &msg, &history, &memories,
+    )
+    .await?;
 
     // 4. Send the final response to the user
     // Only use thread_id if the chat supports threads
@@ -204,10 +210,22 @@ async fn handle_nlp_message(
 }
 
 /// Store a new message in chat history
-pub async fn store_message(
-    env: Arc<BotEnv>,
-    msg: Message,
-) -> Result<()> {
+pub async fn store_message(env: Arc<BotEnv>, msg: Message) -> Result<()> {
+    let text = match msg.text() {
+        Some(text) => text,
+        None => return Ok(()), // Skip if no text
+    };
+
+    // Skip if message is a command
+    if text.starts_with('/') {
+        return Ok(());
+    }
+
+    // Skip if message is prefixed with "--"
+    if text.starts_with("--") {
+        return Ok(());
+    }
+
     let thread_id = msg.thread_id.unwrap_or(GENERAL_THREAD_ID);
     let max_history = env.config.nlp.max_history;
 
@@ -499,23 +517,22 @@ Do not save duplicate memories.
 
 Messages are provided in format "<username>: <message text>".
 
+## Available Commands
+- status - show space status. Includes information about all residents that are currently in hackerspace.
+- needs - show shopping list
+- need <item> - add an item to the shopping list. Only one item at function call.
+
+## Guidelines
+1. If a user asks to perform a task that corresponds to a known command, use the execute_command function.
+2. If you need to remember information for future reference, use the save_memory function.
+3. If you need (or user requests) to remove a previously saved memory, use the remove_memory function with the memory ID.
+4. For general questions or inquiries that don't require commands, respond directly.
+5. Be concise in your responses and focus on helping the user complete their task.
+6. Some commands are only available to residents or admins, so your attempt to execute them might fail.
+
 """#;
 
-/// Process message with LLM using the function calling protocol
-async fn process_with_function_calling(
-    bot: &Bot,
-    env: &Arc<BotEnv>,
-    msg: &Message,
-    history: &[ChatHistoryEntry],
-    memories: &[Memory],
-) -> Result<String> {
-    if env.config.services.openai.disable {
-        anyhow::bail!("OpenAI integration is disabled in config");
-    }
-
-    // Choose the model from config or default to a reasonable one
-    let model = &env.config.nlp.model;
-
+fn get_chat_completion_tools() -> Vec<ChatCompletionTool> {
     // Define available functions
     let functions = vec![
         // Save memory function
@@ -602,6 +619,28 @@ async fn process_with_function_calling(
         })
         .collect();
 
+    tools
+}
+
+/// Process message with LLM using the function calling protocol
+async fn process_with_function_calling(
+    bot: &Bot,
+    env: &Arc<BotEnv>,
+    mac_state: &Arc<RwLock<super::mac_monitoring::State>>,
+    msg: &Message,
+    history: &[ChatHistoryEntry],
+    memories: &[Memory],
+) -> Result<String> {
+    if env.config.services.openai.disable {
+        anyhow::bail!("OpenAI integration is disabled in config");
+    }
+
+    // Choose the model from config or default to a reasonable one
+    let model = &env.config.nlp.model;
+
+    // Define available tools (functions)
+    let tools = get_chat_completion_tools();
+
     // Construct system prompt with memory information
     let mut system_prompt = PROMPT.to_string();
 
@@ -635,42 +674,6 @@ async fn process_with_function_calling(
         }
         system_prompt.push_str("\n");
     }
-
-    // Add available commands information (extracted from help command)
-    system_prompt.push_str("## Available Commands\n");
-    system_prompt.push_str("- help - display command list\n");
-    system_prompt.push_str("- residents - list residents\n");
-    system_prompt
-        .push_str("- residents_admin_table - show residents admin table\n");
-    system_prompt.push_str("- residents_timeline - show residents timeline\n");
-    system_prompt.push_str("- status - show status\n");
-    system_prompt.push_str("- topics - show topic list\n");
-    system_prompt.push_str("- version - show bot version\n");
-    system_prompt.push_str("- needs - show shopping list\n");
-    system_prompt
-        .push_str("- need <item> - add an item to the shopping list\n");
-    system_prompt
-        .push_str("- userctl <args> - control personal configuration\n");
-    system_prompt
-        .push_str("- add_ssh <key> - add an SSH public key for yourself\n");
-    system_prompt.push_str(
-        "- get_ssh <username> - get SSH public keys of a user by username\n",
-    );
-    system_prompt
-        .push_str("- ldap_register <email> [username] - Register in LDAP\n");
-    system_prompt.push_str("- ldap_reset_password - Reset LDAP password\n");
-    system_prompt.push_str("- ldap_update с<args> - Update LDAP settings\n");
-    system_prompt.push_str("- racovina - show racovina camera image\n");
-    system_prompt.push_str("- hlam - show hlam camera image\n");
-
-    // Add bot instructions
-    system_prompt.push_str("\n## Guidelines\n");
-    system_prompt.push_str("1. If a user asks to perform a task that corresponds to a known command, use the execute_command function.\n");
-    system_prompt.push_str("2. If you need to remember information for future reference, use the save_memory function.\n");
-    system_prompt.push_str("3. If you need (or user requests) to remove a previously saved memory, use the remove_memory function with the memory ID.\n");
-    system_prompt.push_str("4. For general questions or inquiries that don't require commands, respond directly.\n");
-    system_prompt.push_str("5. Be concise in your responses and focus on helping the user complete their task.\n");
-    system_prompt.push_str("6. Some commands are only available to residents or admins, so your attempt to execute them might fail.\n");
 
     // Build chat history context
     let mut messages = Vec::new();
@@ -846,8 +849,20 @@ async fn process_with_function_calling(
                     "execute_command" => {
                         let args: ExecuteCommandArgs =
                             serde_json::from_str(&function.arguments)?;
-                        handle_execute_command(bot, msg, &args).await?;
-                        format!("Command /{} executed.", args.command)
+                        match handle_execute_command(
+                            bot, &env, &mac_state, msg, &args,
+                        )
+                        .await
+                        {
+                            Ok(r) => r,
+                            Err(e) => {
+                                log::error!("Error executing command: {}", e);
+                                format!(
+                                    "Error executing command '{}': {}",
+                                    args.command, e
+                                )
+                            }
+                        }
                     }
                     unknown => {
                         log::warn!("Unknown function call: {}", unknown);
@@ -971,28 +986,66 @@ async fn handle_remove_memory(env: &Arc<BotEnv>, memory_id: i32) -> Result<()> {
 /// Handle execute_command function call
 async fn handle_execute_command(
     bot: &Bot,
+    env: &Arc<BotEnv>,
+    mac_state: &Arc<RwLock<super::mac_monitoring::State>>,
     msg: &Message,
     args: &ExecuteCommandArgs,
-) -> Result<()> {
-    let command_text = format!(
-        "/{} {}",
-        args.command,
-        args.arguments.clone().unwrap_or_default()
-    );
-    log::info!("Executing command: {}", command_text);
+) -> Result<String> {
+    debug!("Executing command: {}", args.command);
 
-    // Create a reference to the original message to maintain context
-    let mut message_builder =
-        bot.send_message(msg.chat.id, command_text).disable_notification(true);
+    let r = match args.command.as_str() {
+        "status" => {
+            // Handle status command
+            match cmd_status_text(env, mac_state).await {
+                Ok(text) => text,
+                Err(e) => {
+                    log::error!("Error executing status command: {}", e);
+                    return Err(anyhow::anyhow!(
+                        "Error executing status command: {}",
+                        e
+                    ));
+                }
+            }
+        }
+        "needs" => {
+            // Handle needs command
+            match command_needs_text(&env) {
+                Ok(text) => text,
+                Err(e) => {
+                    log::error!("Error executing needs command: {}", e);
+                    return Err(anyhow::anyhow!(
+                        "Error executing needs command: {}",
+                        e
+                    ));
+                }
+            }
+        }
+        "need" => {
+            // Handle need command
+            let item = args.arguments.clone().unwrap_or_default();
+            match add_items_text(
+                &bot,
+                &env,
+                &[&item],
+                &msg.from.clone().expect("empty from user"),
+            )
+            .await
+            {
+                Ok(text) => text,
+                Err(e) => {
+                    log::error!("Error executing need command: {}", e);
+                    return Err(anyhow::anyhow!(
+                        "Error executing need command: {}",
+                        e
+                    ));
+                }
+            }
+        }
+        _ => {
+            // Unknown command
+            return Err(anyhow::anyhow!("Unknown command: {}", args.command));
+        }
+    };
 
-    // Only add thread_id if the chat supports threads
-    if let Some(thread_id) = msg.thread_id {
-        message_builder = message_builder.message_thread_id(thread_id);
-    }
-
-    let _sent_msg = message_builder.await?;
-
-    // The existing command handlers will process this message
-
-    Ok(())
+    Ok(r)
 }
