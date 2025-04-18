@@ -813,6 +813,8 @@ async fn process_with_function_calling(
             .messages(current_messages.clone())
             .tools(tools.clone())
             .tool_choice(ChatCompletionToolChoiceOption::Auto)
+            .max_tokens(500 as u32)
+            .temperature(0.6)
             .build()?;
 
         // Make the request
