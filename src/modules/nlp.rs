@@ -597,7 +597,6 @@ async fn process_with_function_calling(
     system_prompt.push_str(&format!("Current Date and Time: {}\n\n", now));
 
     // Add memories to the system prompt
-    println!("Memories: {:?}", memories);
     if !memories.is_empty() {
         system_prompt.push_str("## Active Memories\n");
         for memory in memories {
