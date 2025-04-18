@@ -4,6 +4,7 @@
 //! This module allows interaction with the bot using natural language instead
 //! of formal commands, triggered by specific keywords.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
@@ -22,11 +23,12 @@ use serde::{Deserialize, Serialize};
 use tap::Tap;
 use teloxide::prelude::*;
 use teloxide::types::{Message, MessageEntityKind, ThreadId};
+use teloxide::utils::html::escape;
 
 use crate::common::{BotEnv, UpdateHandler};
 use crate::db::{DbChatId, DbThreadId, DbUserId};
 use crate::models::{ChatHistoryEntry, Memory, NewChatHistoryEntry, NewMemory};
-use crate::utils::{BotExt, ResultExt, GENERAL_THREAD_ID};
+use crate::utils::{BotExt, GENERAL_THREAD_ID};
 
 // Function call definitions
 #[derive(Serialize, Deserialize, Debug)]
@@ -44,6 +46,11 @@ struct SaveMemoryArgs {
 
 fn default_duration_hours() -> Option<u32> {
     Some(24)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct RemoveMemoryArgs {
+    memory_id: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -84,6 +91,11 @@ fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
     // Skip bot commands (those starting with '/')
     if text.starts_with('/') {
         return None;
+    }
+
+    // Always process messages in private chats (DMs with the bot)
+    if msg.chat.is_private() {
+        return Some(msg);
     }
 
     // Skip if the message specifically mentions other users but not the bot itself
@@ -178,12 +190,10 @@ async fn handle_nlp_message(
 
     // 4. Send the final response to the user
     // Only use thread_id if the chat supports threads
-    let mut reply_builder = bot
-        .reply_message(&msg, &final_response)
+    let reply_builder = bot
+        .reply_message(&msg, escape(&final_response))
         .parse_mode(teloxide::types::ParseMode::Html)
         .disable_web_page_preview(true);
-
-    // and the chat is a forum chat, so we don't need to manually set it
 
     let sent_msg = reply_builder.await?;
 
@@ -195,7 +205,6 @@ async fn handle_nlp_message(
 
 /// Store a new message in chat history
 pub async fn store_message(
-    bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
 ) -> Result<()> {
@@ -477,18 +486,20 @@ async fn get_relevant_memories(
     Ok(memories)
 }
 
-/// Helper function to determine if a chat supports threads
-fn chat_supports_threads(chat: &teloxide::types::Chat) -> bool {
-    matches!(
-        &chat.kind,
-        teloxide::types::ChatKind::Public(teloxide::types::ChatPublic {
-            kind: teloxide::types::PublicChatKind::Supergroup(
-                teloxide::types::PublicChatSupergroup { is_forum: true, .. }
-            ),
-            ..
-        })
-    )
-}
+const PROMPT: &str = r#"""You are a helpful assistant integrated with a Telegram bot called F0BOT (or 'botka').
+
+You are designed to assist users in a chat environment, providing information and executing commands.
+Your responses should be concise and relevant to the user's request.
+
+In your response you should use hacker slang and abbreviations, response should give cringe vibes.
+DO NOT USE ANY FORMATTING IN RESPONSE. You can use emojis. Answer in user language.
+
+You can execute bot commands or save memories for future reference, or respond directly to users' questions.
+Do not save duplicate memories.
+
+Messages are provided in format "<username>: <message text>".
+
+"""#;
 
 /// Process message with LLM using the function calling protocol
 async fn process_with_function_calling(
@@ -521,8 +532,8 @@ async fn process_with_function_calling(
                         "description": "The text content of the memory to save"
                     },
                     "duration_hours": {
-                        "type": "integer",
-                        "description": "How long the memory should be kept active in hours"
+                        "type": ["integer", "null"],
+                        "description": "How long the memory should be kept active in hours, or null for persistent memory"
                     },
                     "chat_specific": {
                         "type": "boolean",
@@ -538,6 +549,23 @@ async fn process_with_function_calling(
                     }
                 },
                 "required": ["memory_text", "duration_hours", "chat_specific", "thread_specific", "user_specific"],
+                "additionalProperties": false
+            })),
+            strict: Some(true),
+        },
+        // Remove memory function
+        FunctionObject {
+            name: "remove_memory".to_string(),
+            description: Some("Remove a memory by its ID".to_string()),
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "memory_id": {
+                        "type": "integer",
+                        "description": "The ID of the memory to remove"
+                    }
+                },
+                "required": ["memory_id"],
                 "additionalProperties": false
             })),
             strict: Some(true),
@@ -575,13 +603,7 @@ async fn process_with_function_calling(
         .collect();
 
     // Construct system prompt with memory information
-    let mut system_prompt = String::new();
-    system_prompt.push_str("You are a helpful assistant integrated with a Telegram bot called F0BOT (or 'botka'). ");
-    system_prompt.push_str(
-        "In your response you should use hacker slang and abbreviations, response should give cringe vibes.\n\
-        Use html telegram formatting for your response.\n\n",
-    );
-    system_prompt.push_str("You can execute bot commands or save memories for future reference, or respond directly to users' questions.\n\n");
+    let mut system_prompt = PROMPT.to_string();
 
     // Add memories to the system prompt
     if !memories.is_empty() {
@@ -606,8 +628,9 @@ async fn process_with_function_calling(
             };
 
             system_prompt.push_str(&format!(
-                "[{status}][{scope}] {}\n",
-                memory.memory_text
+                "[{status}][{scope}][ID:{rowid}] {}\n",
+                memory.memory_text,
+                rowid = memory.rowid
             ));
         }
         system_prompt.push_str("\n");
@@ -644,9 +667,10 @@ async fn process_with_function_calling(
     system_prompt.push_str("\n## Guidelines\n");
     system_prompt.push_str("1. If a user asks to perform a task that corresponds to a known command, use the execute_command function.\n");
     system_prompt.push_str("2. If you need to remember information for future reference, use the save_memory function.\n");
-    system_prompt.push_str("3. For general questions or inquiries that don't require commands, respond directly.\n");
-    system_prompt.push_str("4. Be concise in your responses and focus on helping the user complete their task.\n");
-    system_prompt.push_str("5. Some commands are only available to residents or admins, so your attempt to execute them might fail.\n");
+    system_prompt.push_str("3. If you need (or user requests) to remove a previously saved memory, use the remove_memory function with the memory ID.\n");
+    system_prompt.push_str("4. For general questions or inquiries that don't require commands, respond directly.\n");
+    system_prompt.push_str("5. Be concise in your responses and focus on helping the user complete their task.\n");
+    system_prompt.push_str("6. Some commands are only available to residents or admins, so your attempt to execute them might fail.\n");
 
     // Build chat history context
     let mut messages = Vec::new();
@@ -657,6 +681,36 @@ async fn process_with_function_calling(
             .content(system_prompt)
             .build()?,
     ));
+
+    // Collect user IDs from history for looking up usernames
+    let user_ids: Vec<DbUserId> =
+        history.iter().filter_map(|entry| entry.from_user_id).collect();
+
+    // Fetch usernames for all users in history in a single query
+    let usernames: HashMap<DbUserId, String> = if !user_ids.is_empty() {
+        env.transaction(|conn| {
+            let results = crate::schema::tg_users::table
+                .filter(crate::schema::tg_users::id.eq_any(user_ids))
+                .select((
+                    crate::schema::tg_users::id,
+                    crate::schema::tg_users::username,
+                    crate::schema::tg_users::first_name,
+                ))
+                .load::<(DbUserId, Option<String>, String)>(conn)?;
+
+            Ok(results
+                .into_iter()
+                .map(|(id, username, first_name)| {
+                    let display_name = username
+                        .map(|u| format!("@{}", u))
+                        .unwrap_or_else(|| first_name);
+                    (id, display_name)
+                })
+                .collect())
+        })?
+    } else {
+        HashMap::new()
+    };
 
     // Add chat history as assistant/user messages
     // Reverse the history since we queried in desc order
@@ -672,20 +726,40 @@ async fn process_with_function_calling(
             );
         } else {
             // User message
+            let display_name = entry
+                .from_user_id
+                .and_then(|uid| usernames.get(&uid))
+                .cloned()
+                .unwrap_or_else(|| "Unknown User".to_string());
+
+            let user_message =
+                format!("{}: {}", display_name, entry.message_text);
+
             messages.push(ChatCompletionRequestMessage::User(
                 ChatCompletionRequestUserMessageArgs::default()
-                    .content(entry.message_text.clone())
+                    .content(user_message)
                     .build()?,
             ));
         }
     }
 
     // Add current message from user
+    let user_name = match msg.from.as_ref() {
+        Some(user) => {
+            if let Some(username) = &user.username {
+                format!("@{}", username)
+            } else {
+                user.first_name.clone()
+            }
+        }
+        None => "Unknown User".to_string(),
+    };
+
+    let message_text = format!("{}: {}", user_name, msg.text().unwrap_or(""));
+
     let message_parts =
         vec![ChatCompletionRequestUserMessageContentPart::Text(
-            ChatCompletionRequestMessageContentPartText {
-                text: msg.text().unwrap_or("").to_string(),
-            },
+            ChatCompletionRequestMessageContentPartText { text: message_text },
         )];
 
     messages.push(ChatCompletionRequestMessage::User(
@@ -760,10 +834,19 @@ async fn process_with_function_calling(
                             .await?;
                         "Memory saved successfully.".to_string()
                     }
+                    "remove_memory" => {
+                        let args: RemoveMemoryArgs =
+                            serde_json::from_str(&function.arguments)?;
+                        handle_remove_memory(env, args.memory_id).await?;
+                        format!(
+                            "Memory with ID {} removed successfully.",
+                            args.memory_id
+                        )
+                    }
                     "execute_command" => {
                         let args: ExecuteCommandArgs =
                             serde_json::from_str(&function.arguments)?;
-                        handle_execute_command(bot, env, msg, &args).await?;
+                        handle_execute_command(bot, msg, &args).await?;
                         format!("Command /{} executed.", args.command)
                     }
                     unknown => {
@@ -857,10 +940,37 @@ async fn handle_save_memory(
     Ok(())
 }
 
+/// Handle remove_memory function call
+async fn handle_remove_memory(env: &Arc<BotEnv>, memory_id: i32) -> Result<()> {
+    // Check if memory exists first
+    let exists = env.transaction(|conn| {
+        let count: i64 = crate::schema::memories::table
+            .filter(crate::schema::memories::rowid.eq(memory_id))
+            .count()
+            .get_result(conn)?;
+
+        Ok(count > 0)
+    })?;
+
+    if !exists {
+        return Err(anyhow::anyhow!("Memory with ID {} not found", memory_id));
+    }
+
+    // Delete the memory
+    env.transaction(|conn| {
+        diesel::delete(crate::schema::memories::table)
+            .filter(crate::schema::memories::rowid.eq(memory_id))
+            .execute(conn)
+    })?;
+
+    log::info!("Removed memory with ID: {}", memory_id);
+
+    Ok(())
+}
+
 /// Handle execute_command function call
 async fn handle_execute_command(
     bot: &Bot,
-    env: &Arc<BotEnv>,
     msg: &Message,
     args: &ExecuteCommandArgs,
 ) -> Result<()> {
@@ -876,12 +986,11 @@ async fn handle_execute_command(
         bot.send_message(msg.chat.id, command_text).disable_notification(true);
 
     // Only add thread_id if the chat supports threads
-    if chat_supports_threads(&msg.chat) && msg.thread_id.is_some() {
-        message_builder =
-            message_builder.message_thread_id(msg.thread_id.unwrap());
+    if let Some(thread_id) = msg.thread_id {
+        message_builder = message_builder.message_thread_id(thread_id);
     }
 
-    let sent_msg = message_builder.await?;
+    let _sent_msg = message_builder.await?;
 
     // The existing command handlers will process this message
 
