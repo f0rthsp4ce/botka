@@ -21,6 +21,8 @@ pub struct Config {
     pub telegram: Telegram,
     pub server_addr: SocketAddr,
     pub services: Services,
+    #[serde(default)]
+    pub nlp: NlpConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -177,6 +179,32 @@ pub struct LdapAttributes {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EspCam {
     pub url: Url,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct NlpConfig {
+    #[serde(default)]
+    pub trigger_words: Vec<String>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_model")]
+    pub model: String,
+    #[serde(default = "default_max_history")]
+    pub max_history: usize,
+    #[serde(default = "default_memory_limit")]
+    pub memory_limit: i64,
+}
+
+fn default_max_history() -> usize {
+    100
+}
+
+fn default_memory_limit() -> i64 {
+    24 * 7 // Default to 1 week in hours
+}
+
+fn default_model() -> String {
+    "gpt-4.1".to_string()
 }
 
 #[cfg(test)]

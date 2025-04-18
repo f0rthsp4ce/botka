@@ -134,6 +134,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     let prometheus = PrometheusBuilder::new().install_recorder()?;
     metrics::register_metrics();
     modules::borrowed_items::register_metrics();
+    modules::nlp::register_metrics();
 
     let config: Arc<crate::config::Config> = Arc::new(
         File::open(config_fpath)
@@ -197,6 +198,8 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::welcome::message_handler())
                     .branch(modules::camera::command_handler())
                     .branch(modules::ldap::command_handler())
+                    .inspect_err(modules::nlp::store_message)
+                    .branch(modules::nlp::message_handler())
                     .endpoint(drop_endpoint),
             )
             .branch(

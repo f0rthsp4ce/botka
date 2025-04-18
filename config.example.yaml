@@ -122,3 +122,21 @@ services:
   vortex_of_doom_cam:
     # URL to the camera image.
     url: http://espcam-2.lo.f0rth.space:8081/
+
+# Natural Language Processing configuration
+nlp:
+  # Enable or disable the NLP functionality
+  enabled: true
+  # Words that trigger NLP processing (case insensitive)
+  trigger_words:
+    - "bot"
+    - "бот"
+    - "botka"
+    - "ботка"
+    - "@your_bot_username"
+  # OpenAI model to use (default: gpt-4.1)
+  model: "gpt-4.1"
+  # Maximum number of messages to include in history context
+  max_history: 100
+  # Default memory lifetime in hours (168 = 7 days)
+  memory_limit: 168
