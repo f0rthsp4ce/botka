@@ -672,30 +672,48 @@ async fn process_with_function_calling(
     // Reverse the history since we queried in desc order
     // Drop the first message since it is the current one
     // and we will add it at the end
-    for entry in history.iter().skip(1).rev() {
-        if entry.from_user_id.is_none() {
-            // Bot message
-            messages.push(
+    {
+        let mut user_message_combined = String::new();
+        for entry in history.iter().skip(1).rev() {
+            if entry.from_user_id.is_none() {
+                if !user_message_combined.is_empty() {
+                    // Add user message before the assistant message
+                    messages.push(ChatCompletionRequestMessage::User(
+                        ChatCompletionRequestUserMessageArgs::default()
+                            .content(user_message_combined.clone())
+                            .build()?,
+                    ));
+                    user_message_combined.clear();
+                }
+
+                // Bot message
+                messages.push(
                 ChatCompletionRequestMessage::Assistant(
                     async_openai::types::ChatCompletionRequestAssistantMessageArgs::default()
                         .content(entry.message_text.clone())
                         .build()?
                 )
             );
-        } else {
-            // User message
-            let display_name = entry
-                .from_user_id
-                .and_then(|uid| usernames.get(&uid))
-                .cloned()
-                .unwrap_or_else(|| "Unknown User".to_string());
+            } else {
+                // User message
+                let display_name = entry
+                    .from_user_id
+                    .and_then(|uid| usernames.get(&uid))
+                    .cloned()
+                    .unwrap_or_else(|| "Unknown User".to_string());
 
-            let user_message =
-                format!("{}: {}", display_name, entry.message_text);
+                let user_message =
+                    format!("{}: {}", display_name, entry.message_text);
 
+                user_message_combined
+                    .push_str(&format!("{}\n\n", user_message));
+            }
+        }
+        // Add any remaining user message
+        if !user_message_combined.is_empty() {
             messages.push(ChatCompletionRequestMessage::User(
                 ChatCompletionRequestUserMessageArgs::default()
-                    .content(user_message)
+                    .content(user_message_combined)
                     .build()?,
             ));
         }
