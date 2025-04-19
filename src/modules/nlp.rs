@@ -99,6 +99,11 @@ fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
         None => return None,
     };
 
+    // Skip if text starts with '--'
+    if text.starts_with("--") {
+        return None;
+    }
+
     // Skip bot commands (those starting with '/')
     if text.starts_with('/') {
         return None;
