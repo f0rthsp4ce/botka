@@ -218,9 +218,9 @@ async fn handle_nlp_message(
 
 /// Store a new message in chat history
 pub async fn store_message(env: Arc<BotEnv>, msg: Message) -> Result<()> {
-    let text = match msg.text() {
+    let text = match msg.text().or(msg.caption()) {
         Some(text) => text,
-        None => return Ok(()), // Skip if no text
+        None => return Ok(()),
     };
 
     // Skip if message is a command
@@ -677,7 +677,45 @@ async fn process_with_function_calling(
         None => "Unknown User".to_string(),
     };
 
-    let message_text = format!("{}: {}", user_name, msg.text().unwrap_or(""));
+    let mut message_text = String::new();
+
+    // Check if the message is a reply to another message
+    if let Some(replied_to) = msg.reply_to_message() {
+        // Get the username of the user being replied to
+        let replied_user_name = match replied_to.from.as_ref() {
+            Some(user) => {
+                if let Some(username) = &user.username {
+                    format!("@{}", username)
+                } else {
+                    user.first_name.clone()
+                }
+            }
+            None => "Unknown User".to_string(),
+        };
+
+        // Get the text of the replied message
+        let replied_text =
+            replied_to.text().or_else(|| replied_to.caption()).unwrap_or("");
+
+        // Add > prefix to the replied message text
+        let replied_text = replied_text
+            .lines()
+            .map(|line| format!("> {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Format the message text
+        message_text.push_str(&format!(
+            "{} replied to ({}):\n{}\n\n",
+            user_name, replied_user_name, replied_text
+        ));
+
+        // Add the current message text
+        message_text.push_str(msg.text().unwrap_or(""));
+    } else {
+        // Just the current message
+        message_text = format!("{}: {}", user_name, msg.text().unwrap_or(""));
+    }
 
     // Create a vector to hold the message content parts
     let mut message_parts = Vec::new();
