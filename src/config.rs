@@ -113,8 +113,14 @@ pub struct OpenAI {
     pub api_key: String,
     #[serde(default)]
     pub api_base: Option<String>,
+    #[serde(default = "default_openai_model")]
+    pub model: String,
     #[serde(default)]
     pub disable: bool,
+}
+
+fn default_openai_model() -> String {
+    "gpt-4.1".to_string()
 }
 
 pub fn default_ldap_groups_dn() -> String {

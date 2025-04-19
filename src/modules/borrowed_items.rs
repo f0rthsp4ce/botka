@@ -839,19 +839,16 @@ fn classify_dumb(text: &str) -> Result<ClassificationResult> {
     Ok(ClassificationResult::Unknown)
 }
 
-const MODEL: &str = "gpt-4.1";
 const METRIC_NAME: &str = "botka_openai_used_tokens_total";
 
 /// Registers metrics for `OpenAI` API usage
 pub fn register_metrics() {
     metrics::register_counter!(
         METRIC_NAME,
-        "model" => MODEL,
         "type" => "prompt",
     );
     metrics::register_counter!(
         METRIC_NAME,
-        "model" => MODEL,
         "type" => "completion",
     );
     metrics::describe_counter!(
@@ -1020,9 +1017,11 @@ async fn classify_openai(
         return Ok(ClassificationResult::Unknown);
     }
 
+    let model = &env.config.services.openai.model;
+
     let request = CreateChatCompletionRequestArgs::default()
         .max_tokens(256u16)
-        .model(MODEL)
+        .model(model)
         .messages([
             ChatCompletionRequestMessage::System(
                 ChatCompletionRequestSystemMessageArgs::default()
@@ -1061,13 +1060,11 @@ async fn classify_openai(
         metrics::counter!(
             METRIC_NAME,
             usage.prompt_tokens.into(),
-            "model" => MODEL,
             "type" => "prompt",
         );
         metrics::counter!(
             METRIC_NAME,
             usage.completion_tokens.into(),
-            "model" => MODEL,
             "type" => "completion",
         );
     }
@@ -1347,6 +1344,8 @@ async fn match_returned_items_with_llm(
         return Ok(Vec::new());
     }
 
+    let model = &env.config.services.openai.model;
+
     let prompt = format!(
         "Determine which items a user is returning match with items they previously borrowed.\n\n\
         Items user wants to return: {}\n\n\
@@ -1365,7 +1364,7 @@ async fn match_returned_items_with_llm(
 
     let request = CreateChatCompletionRequestArgs::default()
         .max_tokens(256u16)
-        .model(MODEL)
+        .model(model)
         .messages([
             ChatCompletionRequestMessage::System(
                 ChatCompletionRequestSystemMessageArgs::default()
@@ -1398,13 +1397,11 @@ async fn match_returned_items_with_llm(
         metrics::counter!(
             METRIC_NAME,
             usage.prompt_tokens.into(),
-            "model" => MODEL,
             "type" => "prompt",
         );
         metrics::counter!(
             METRIC_NAME,
             usage.completion_tokens.into(),
-            "model" => MODEL,
             "type" => "completion",
         );
     }
