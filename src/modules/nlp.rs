@@ -219,7 +219,7 @@ async fn handle_nlp_message(
 
     // 4. Send the final response to the user
     let reply_builder = bot
-        .send_message(msg.chat.id, escape(&final_response))
+        .send_message(msg.chat.id, &final_response)
         .reply_to_message_id(msg.id)
         .parse_mode(teloxide::types::ParseMode::Html)
         .disable_web_page_preview(true);
@@ -407,8 +407,18 @@ Your responses should be concise and relevant to the user's request.
 
 In your response you should use hacker slang and abbreviations.
 Response should be as concise and short as possible, but still informative.
-DO NOT USE ANY FORMATTING IN RESPONSE. DO NOT USE BOLD TEXT OR ANY OTHER KIND OF FORMATTING.
 Answer in user language.
+
+You can use ONLY this formatting for your responses:
+- <b> for bold text
+- <i> for italic text
+- <code> for code blocks
+- <pre language="c++"> for code blocks with syntax highlighting
+- <s> for strikethrough text
+- <u> for underline text
+
+Do not use any other formatting. Always close tags. Do not nest tags.
+Do not add extra attributes to tags.
 
 You can execute bot commands or save memories for future reference, or respond directly to users' questions.
 
