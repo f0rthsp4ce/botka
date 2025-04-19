@@ -1350,7 +1350,7 @@ async fn handle_search(
                     .build()?,
             ),
         ])
-        .max_tokens(500 as u32)
+        .max_tokens(1500 as u32)
         .temperature(0.6)
         .build()?;
 
