@@ -123,6 +123,11 @@ services:
     # URL to the camera image.
     url: http://espcam-2.lo.f0rth.space:8081/
 
+  # Butler API for opening the door
+  butler:
+    url: http://butler.lo.f0rth.space:8080/control
+    token: SECRET
+
 # Natural Language Processing configuration
 nlp:
   # Enable or disable the NLP functionality

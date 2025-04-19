@@ -36,6 +36,7 @@ use crate::common::{is_resident, BotEnv, UpdateHandler};
 use crate::db::{DbChatId, DbThreadId, DbUserId};
 use crate::models::{ChatHistoryEntry, Memory, NewChatHistoryEntry, NewMemory};
 use crate::modules::basic::cmd_status_text;
+use crate::modules::butler;
 use crate::modules::needs::{add_items_text, command_needs_text};
 use crate::utils::{MessageExt, ResultExt, GENERAL_THREAD_ID};
 
@@ -426,6 +427,8 @@ Messages are provided in format "<username>: <message text>".
 - status - show space status. Includes information about all residents that are currently in hackerspace.
 - needs - show shopping list.
 - need <item> - add an item to the shopping list. Only one item at function call. If user wants to add multiple items, you should call this function multiple times.
+- open - open the hackerspace main door. This requires confirmation and is only available to residents.
+  Warning: Door opening is a sensitive action and should be handled with care, because door does not closes remotely. Ask user for confirmation before executing.
 
 ## Operational Guidelines
 1. If a user asks to perform a task that corresponds to a known command, use the execute_command function with the command name and arguments.
@@ -436,6 +439,7 @@ Messages are provided in format "<username>: <message text>".
     - Set duration_hours to the number of hours the memory should be kept active, or null for persistent memory. Use information about current date and time to determine the duration.
     - Set chat_specific, thread_specific, and user_specific to true if the memory is specific to the current chat, thread, or user respectively.
       If user requests for example how do you call him, use user_specific false and duration_hours to null.
+    - If user is coming to space save this info as global memory with duration_hours determined from user message.
     - If the user doesn't specify a duration or duration cannot be determined, set duration_hours to 24 hours.
     - If the user doesn't specify a duration but it is clear that the memory should be persistent, set duration_hours to null.
     - DO NOT SAVE DUPLICATE MEMORIES. If a memory with the same text already exists, do not create a new one.
@@ -1303,6 +1307,31 @@ async fn handle_execute_command(
                 }
             }
         }
+        "open" => {
+            // Check if user is a resident
+            if !is_resident(
+                &mut env.conn(),
+                &msg.from.clone().expect("empty from user"),
+            ) {
+                return Err(anyhow::anyhow!(
+                    "Only residents can open the door."
+                ));
+            }
+            // Request door opening with confirmation
+            match butler::request_door_open_with_confirmation(
+               bot,
+               env.clone(),
+               msg.chat.id,
+               msg.thread_id,
+               &msg.from.clone().expect("empty from user"),
+           ).await {
+              Ok(_) => "I've sent a confirmation request to open the door. Please confirm using the buttons.".to_string(),
+              Err(e) => {
+                log::error!("Error requesting door open: {}", e);
+                return Err(anyhow::anyhow!("Failed to request door opening: {}", e));
+              }
+           }
+        }
         _ => {
             // Unknown command
             return Err(anyhow::anyhow!("Unknown command: {}", args.command));
@@ -1320,10 +1349,7 @@ DO NOT USE MARKDOWN OR HTML FORMATTING.
 DO NOT USE YOUR OWN KNOWLEDGE, ONLY USE THE SEARCH FUNCTION.
 "#;
 
-async fn handle_search(
-    env: &Arc<BotEnv>,
-    query: &str,
-) -> Result<String> {
+async fn handle_search(env: &Arc<BotEnv>, query: &str) -> Result<String> {
     log::debug!("Searching for: {}", query);
 
     // Construct request
@@ -1366,15 +1392,9 @@ async fn handle_search(
             "type" => "completion",
         );
     }
-    let choice = response
-        .choices
-        .first()
-        .context("No choices in LLM response")?;
-    let content = choice
-        .message
-        .content
-        .clone()
-        .unwrap_or_default();
+    let choice =
+        response.choices.first().context("No choices in LLM response")?;
+    let content = choice.message.content.clone().unwrap_or_default();
 
     // Check if the response is empty
     if content.is_empty() {

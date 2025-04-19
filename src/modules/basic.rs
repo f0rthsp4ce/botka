@@ -94,6 +94,7 @@ async fn cmd_help(bot: Bot, msg: Message) -> Result<()> {
     text.push_str(&commands_help::<crate::modules::userctl::Commands>());
     text.push_str(&commands_help::<crate::modules::camera::Commands>());
     text.push_str(&commands_help::<crate::modules::ldap::Commands>());
+    text.push_str(&commands_help::<crate::modules::butler::Commands>());
     text.push_str("\nCommands marked with * are available only to residents.");
     // "..., and with ** are available only to bot technicians."
     bot.reply_message(&msg, text)

@@ -162,6 +162,8 @@
             pkgs.ruff # Python linter
             pkgs.statix # Nix linter/formatter
             pkgs.cargo-deny
+
+            pkgs.openssl
           ] ++ baseRuntimeDeps; # Include base runtime deps in the shell
 
           # Environment variables for the shell

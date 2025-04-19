@@ -202,6 +202,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::welcome::message_handler())
                     .branch(modules::camera::command_handler())
                     .branch(modules::ldap::command_handler())
+                    .branch(modules::butler::command_handler())
                     .inspect_err(modules::nlp::store_message)
                     .branch(modules::nlp::message_handler())
                     .endpoint(drop_endpoint),
@@ -211,6 +212,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::needs::callback_handler())
                     .branch(modules::polls::callback_handler())
                     .branch(modules::borrowed_items::callback_handler())
+                    .branch(modules::butler::callback_handler())
                     .endpoint(drop_callback_query),
             )
             .branch(modules::polls::poll_answer_handler())

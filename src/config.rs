@@ -85,6 +85,8 @@ pub struct Services {
     pub ldap: Option<Ldap>,
     pub vortex_of_doom_cam: EspCam,
     pub racovina_cam: EspCam,
+    #[serde(default)]
+    pub butler: Option<Butler>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -192,6 +194,12 @@ pub struct LdapAttributes {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EspCam {
     pub url: Url,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Butler {
+    pub url: String,
+    pub token: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
