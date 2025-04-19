@@ -1,5 +1,6 @@
 //! `/userctl` command to add or remove MAC addresses.
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -262,7 +263,7 @@ async fn cmd_get_ssh(
 
     let mut response = format!("SSH keys for user '{username}':\n\n");
     for key in keys {
-        response.push_str(&format!("<pre>{}</pre>\n\n", html::escape(&key)));
+        write!(response, "<pre>{}</pre>\n\n", html::escape(&key))?;
     }
 
     bot.reply_message(&msg, response)

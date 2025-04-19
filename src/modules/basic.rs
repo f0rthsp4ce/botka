@@ -94,6 +94,7 @@ async fn cmd_help(bot: Bot, msg: Message) -> Result<()> {
     text.push_str(&commands_help::<crate::modules::userctl::Commands>());
     text.push_str(&commands_help::<crate::modules::camera::Commands>());
     text.push_str(&commands_help::<crate::modules::ldap::Commands>());
+    text.push_str(&commands_help::<crate::modules::butler::Commands>());
     text.push_str("\nCommands marked with * are available only to residents.");
     // "..., and with ** are available only to bot technicians."
     bot.reply_message(&msg, text)
@@ -223,12 +224,10 @@ async fn cmd_show_residents_timeline(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_status(
-    bot: Bot,
-    env: Arc<BotEnv>,
-    msg: Message,
-    state: Arc<RwLock<State>>,
-) -> Result<()> {
+pub async fn cmd_status_text(
+    env: &Arc<BotEnv>,
+    state: &Arc<RwLock<State>>,
+) -> Result<String> {
     let mut text = String::new();
 
     if let Some(active_users) = (*state.read().await).active_users() {
@@ -245,10 +244,21 @@ async fn cmd_status(
     } else {
         writeln!(
             &mut text,
-            "No data collected yet. Probably Mikrotik password is incorrect."
+            "No data collected yet. Probably Mikrotik password is incorrect. Tell that to the admin."
         )
         .unwrap();
     }
+
+    Ok(text)
+}
+
+async fn cmd_status(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+    state: Arc<RwLock<State>>,
+) -> Result<()> {
+    let text = cmd_status_text(&env, &state).await?;
 
     bot.reply_message(&msg, text)
         .parse_mode(teloxide::types::ParseMode::Html)

@@ -66,7 +66,7 @@ fn version() -> &'static str {
 /// botka
 #[derive(FromArgs, PartialEq, Debug)]
 struct Args {
-    #[argh(option, hidden_help = true, long = "-set-revision")]
+    #[argh(option, hidden_help = true, long = "set-revision")]
     set_revision: Option<String>,
 
     #[argh(subcommand)]
@@ -134,6 +134,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
     let prometheus = PrometheusBuilder::new().install_recorder()?;
     metrics::register_metrics();
     modules::borrowed_items::register_metrics();
+    modules::nlp::register_metrics();
 
     let config: Arc<crate::config::Config> = Arc::new(
         File::open(config_fpath)
@@ -152,15 +153,19 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
 
     let ldap_client = Arc::new(tokio::sync::Mutex::new(LdapClientState::new()));
 
+    let mut openai_config = async_openai::config::OpenAIConfig::new()
+        .with_api_key(config.services.openai.api_key.clone());
+
+    if let Some(api_base) = &config.services.openai.api_base {
+        openai_config = openai_config.with_api_base(api_base.clone());
+    }
+
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&format!(
             "sqlite://{DB_FILENAME}"
         ))?),
         reqwest_client: reqwest_client.clone(),
-        openai_client: async_openai::Client::with_config(
-            async_openai::config::OpenAIConfig::new()
-                .with_api_key(config.services.openai.api_key.clone()),
-        ),
+        openai_client: async_openai::Client::with_config(openai_config),
         config: Arc::<config::Config>::clone(&config),
         config_path: config_fpath.into(),
         ldap_client: Arc::<tokio::sync::Mutex<common::LdapClientState>>::clone(
@@ -197,6 +202,9 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::welcome::message_handler())
                     .branch(modules::camera::command_handler())
                     .branch(modules::ldap::command_handler())
+                    .branch(modules::butler::command_handler())
+                    .inspect_err(modules::nlp::store_message)
+                    .branch(modules::nlp::message_handler())
                     .endpoint(drop_endpoint),
             )
             .branch(
@@ -204,6 +212,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::needs::callback_handler())
                     .branch(modules::polls::callback_handler())
                     .branch(modules::borrowed_items::callback_handler())
+                    .branch(modules::butler::callback_handler())
                     .endpoint(drop_callback_query),
             )
             .branch(modules::polls::poll_answer_handler())

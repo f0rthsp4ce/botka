@@ -167,6 +167,53 @@ pub struct UserSshKey {
     pub key: String,
 }
 
+#[allow(clippy::struct_field_names)]
+#[derive(Clone, Debug, Insertable, Queryable, Selectable)]
+#[diesel(table_name = crate::schema::memories)]
+pub struct Memory {
+    pub rowid: i32,
+    pub memory_text: String,
+    pub creation_date: chrono::NaiveDateTime,
+    pub expiration_date: Option<chrono::NaiveDateTime>,
+    pub chat_id: Option<DbChatId>,
+    pub thread_id: Option<DbThreadId>,
+    pub user_id: Option<DbUserId>,
+}
+
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = crate::schema::memories)]
+pub struct NewMemory<'a> {
+    pub memory_text: &'a str,
+    pub creation_date: chrono::NaiveDateTime,
+    pub expiration_date: Option<chrono::NaiveDateTime>,
+    pub chat_id: Option<DbChatId>,
+    pub thread_id: Option<DbThreadId>,
+    pub user_id: Option<DbUserId>,
+}
+
+#[derive(Clone, Debug, Insertable, Queryable, Selectable)]
+#[diesel(table_name = crate::schema::chat_history)]
+pub struct ChatHistoryEntry {
+    pub rowid: i32,
+    pub chat_id: DbChatId,
+    pub thread_id: DbThreadId,
+    pub message_id: DbMessageId,
+    pub from_user_id: Option<DbUserId>,
+    pub timestamp: chrono::NaiveDateTime,
+    pub message_text: String,
+}
+
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = crate::schema::chat_history)]
+pub struct NewChatHistoryEntry<'a> {
+    pub chat_id: DbChatId,
+    pub thread_id: DbThreadId,
+    pub message_id: DbMessageId,
+    pub from_user_id: Option<DbUserId>,
+    pub timestamp: chrono::NaiveDateTime,
+    pub message_text: &'a str,
+}
+
 // Database option models
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug)]

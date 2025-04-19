@@ -1,5 +1,6 @@
 //! Commands related to LDAP.
 
+use std::fmt::Write;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -265,7 +266,7 @@ async fn ldap_groups(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
 
     let mut text = "Your LDAP groups:\n".to_string();
     for group in groups {
-        text.push_str(&format!("- {group}\n"));
+        writeln!(text, "- {group}\n").ok();
     }
 
     bot.reply_message(&msg, text).await?;

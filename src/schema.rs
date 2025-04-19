@@ -12,11 +12,35 @@ diesel::table! {
 }
 
 diesel::table! {
+    chat_history (rowid) {
+        rowid -> Integer,
+        chat_id -> BigInt,
+        thread_id -> Integer,
+        message_id -> Integer,
+        from_user_id -> Nullable<BigInt>,
+        timestamp -> Timestamp,
+        message_text -> Text,
+    }
+}
+
+diesel::table! {
     dashboard_messages (chat_id, thread_id, message_id) {
         chat_id -> BigInt,
         thread_id -> Integer,
         message_id -> Integer,
         text -> Text,
+    }
+}
+
+diesel::table! {
+    memories (rowid) {
+        rowid -> Integer,
+        memory_text -> Text,
+        creation_date -> Timestamp,
+        expiration_date -> Nullable<Timestamp>,
+        chat_id -> Nullable<BigInt>,
+        thread_id -> Nullable<Integer>,
+        user_id -> Nullable<BigInt>,
     }
 }
 
@@ -116,7 +140,9 @@ diesel::table! {
 
 diesel::allow_tables_to_appear_in_same_query!(
     borrowed_items,
+    chat_history,
     dashboard_messages,
+    memories,
     needed_items,
     options,
     residents,

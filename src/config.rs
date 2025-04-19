@@ -21,6 +21,8 @@ pub struct Config {
     pub telegram: Telegram,
     pub server_addr: SocketAddr,
     pub services: Services,
+    #[serde(default)]
+    pub nlp: NlpConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -83,6 +85,8 @@ pub struct Services {
     pub ldap: Option<Ldap>,
     pub vortex_of_doom_cam: EspCam,
     pub racovina_cam: EspCam,
+    #[serde(default)]
+    pub butler: Option<Butler>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -109,8 +113,22 @@ pub struct WikiJs {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OpenAI {
     pub api_key: String,
+    #[serde(default = "default_openai_api_base")]
+    pub api_base: Option<String>,
+    /// Used for borrowed items
+    #[serde(default = "default_openai_model")]
+    pub model: String,
     #[serde(default)]
     pub disable: bool,
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn default_openai_api_base() -> Option<String> {
+    Some("https://openrouter.ai/api/v1".to_string())
+}
+
+fn default_openai_model() -> String {
+    "google/gemini-2.5-flash-preview".to_string()
 }
 
 pub fn default_ldap_groups_dn() -> String {
@@ -177,6 +195,44 @@ pub struct LdapAttributes {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EspCam {
     pub url: Url,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Butler {
+    pub url: String,
+    pub token: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct NlpConfig {
+    #[serde(default)]
+    pub trigger_words: Vec<String>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_model")]
+    pub model: String,
+    #[serde(default = "default_search_model")]
+    pub search_model: String,
+    #[serde(default = "default_max_history")]
+    pub max_history: u16,
+    #[serde(default = "default_memory_limit")]
+    pub memory_limit: i64,
+}
+
+const fn default_max_history() -> u16 {
+    100
+}
+
+const fn default_memory_limit() -> i64 {
+    24 * 7 // Default to 1 week in hours
+}
+
+fn default_model() -> String {
+    "openai/gpt-4.1".to_string()
+}
+
+fn default_search_model() -> String {
+    "openai/gpt-4o-mini-search-preview".to_string()
 }
 
 #[cfg(test)]

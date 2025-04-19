@@ -3,12 +3,14 @@
 pub mod ask_to_visit;
 pub mod basic;
 pub mod borrowed_items;
+pub mod butler;
 pub mod camera;
 pub mod dashboard;
 pub mod forward_topic_pins;
 pub mod ldap;
 pub mod mac_monitoring;
 pub mod needs;
+pub mod nlp;
 pub mod polls;
 pub mod rename_closed_topics;
 pub mod resident_tracker;

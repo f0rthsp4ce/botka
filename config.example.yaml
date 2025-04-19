@@ -91,6 +91,8 @@ services:
   # OpenAI API configuration.
   openai:
     api_key: SECRET
+    api_base: "https://openrouter.ai/api/v1"
+    model: "google/gemini-2.5-flash-preview"
     # Use stub logic instead of OpenAI API. Useful for local testing.
     disable: false
 
@@ -122,3 +124,27 @@ services:
   vortex_of_doom_cam:
     # URL to the camera image.
     url: http://espcam-2.lo.f0rth.space:8081/
+
+  # Butler API for opening the door
+  butler:
+    url: http://butler.lo.f0rth.space:8080/control
+    token: SECRET
+
+# Natural Language Processing configuration
+nlp:
+  # Enable or disable the NLP functionality
+  enabled: true
+  # Words that trigger NLP processing (case insensitive)
+  trigger_words:
+    - "bot"
+    - "бот"
+    - "botka"
+    - "ботка"
+    - "@your_bot_username"
+  # AI model to use for NLP processing (gpt-4.1 is recommended)
+  model: openai/gpt-4.1
+  search_model: openai/gpt-4o-mini-search-preview
+  # Maximum number of messages to include in history context
+  max_history: 100
+  # Default memory lifetime in hours (168 = 7 days)
+  memory_limit: 168
