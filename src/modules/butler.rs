@@ -59,7 +59,7 @@ async fn cmd_open(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
 
     request_door_open_with_confirmation(
         &bot,
-        env.clone(),
+        Arc::<BotEnv>::clone(&env),
         msg.chat.id,
         msg.thread_id_ext(),
         &user,
@@ -82,7 +82,7 @@ async fn execute_door_open(
 
     let response = client
         .post(url)
-        .header("Cookie", format!("ses={}", token))
+        .header("Cookie", format!("ses={token}"))
         .form(&[("username", username)]) // Add username as a POST parameter
         .send()
         .await?;
@@ -155,7 +155,7 @@ async fn handle_callback(
             )
             .await
             {
-                Ok(_) => {
+                Ok(()) => {
                     // Update the message
                     bot.edit_message_text(
                         msg.chat.id,
@@ -169,7 +169,7 @@ async fn handle_callback(
                         .await?;
                 }
                 Err(e) => {
-                    log::error!("Failed to open door: {}", e);
+                    log::error!("Failed to open door: {e}");
 
                     bot.answer_callback_query(&callback.id)
                         .text("Failed to open door. Please try again.")

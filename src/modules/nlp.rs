@@ -1,5 +1,5 @@
 //! Natural language processing module for understanding and responding to
-//! non-command messages using OpenAI API.
+//! non-command messages using `OpenAI` API.
 //!
 //! This module allows interaction with the bot using natural language instead
 //! of formal commands, triggered by specific keywords.
@@ -8,6 +8,7 @@
 //! - The bot works weirdly in general topic threads of forum. Idk why.
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
@@ -54,7 +55,8 @@ struct SaveMemoryArgs {
     user_specific: bool,
 }
 
-fn default_duration_hours() -> Option<u32> {
+#[allow(clippy::unnecessary_wraps)]
+const fn default_duration_hours() -> Option<u32> {
     Some(24)
 }
 
@@ -78,7 +80,7 @@ struct SearchArgs {
 // Metric name for monitoring token usage
 const METRIC_NAME: &str = "botka_openai_nlp_used_tokens_total";
 
-/// Register metrics for OpenAI API usage
+/// Register metrics for `OpenAI` API usage
 pub fn register_metrics() {
     metrics::register_counter!(METRIC_NAME, "type" => "prompt");
     metrics::register_counter!(METRIC_NAME, "type" => "completion");
@@ -101,10 +103,7 @@ fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
     }
 
     // Skip messages without text or without caption
-    let text = match msg.text().or(msg.caption()) {
-        Some(text) => text,
-        None => return None,
-    };
+    let text = msg.text().or_else(|| msg.caption())?;
 
     // Skip if text starts with '--'
     if text.starts_with("--") {
@@ -133,7 +132,7 @@ fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
 
     // Process if message is a reply to a bot message
     if let Some(replied_msg) = msg.reply_to_message() {
-        if replied_msg.from.as_ref().map_or(false, |user| user.is_bot) {
+        if replied_msg.from.as_ref().is_some_and(|user| user.is_bot) {
             return Some(msg);
         }
     }
@@ -167,10 +166,7 @@ fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
 /// Checks if the message mentions other users but not the bot
 fn has_mentions_but_not_bot(msg: &Message, env: &Arc<BotEnv>) -> bool {
     let msg_entities = msg.entities();
-    let entities = match &msg_entities {
-        Some(entities) => entities,
-        None => return false,
-    };
+    let Some(entities) = &msg_entities else { return false };
 
     let bot_username =
         env.config.telegram.token.split(':').next().unwrap_or("");
@@ -206,7 +202,7 @@ async fn handle_nlp_message(
     msg: Message,
 ) -> Result<()> {
     // 1. Get chat history
-    let history = get_chat_history(&env, msg.chat.id, msg.thread_id).await?;
+    let history = get_chat_history(&env, msg.chat.id, msg.thread_id)?;
 
     // 2. Get relevant memories
     let memories = get_relevant_memories(
@@ -214,8 +210,7 @@ async fn handle_nlp_message(
         msg.chat.id,
         msg.thread_id,
         msg.from.clone().expect("unknown from").id,
-    )
-    .await?;
+    )?;
 
     // 3. Process with OpenAI using the proper function calling protocol
     let final_response = process_with_function_calling(
@@ -233,16 +228,15 @@ async fn handle_nlp_message(
     let sent_msg = reply_builder.await?;
 
     // 5. Store bot's response in chat history
-    store_bot_response(&env, &msg, &sent_msg, &final_response).await?;
+    store_bot_response(&env, &msg, &sent_msg, &final_response)?;
 
     Ok(())
 }
 
 /// Store a new message in chat history
 pub async fn store_message(env: Arc<BotEnv>, msg: Message) -> Result<()> {
-    let text = match msg.text().or(msg.caption()) {
-        Some(text) => text,
-        None => return Ok(()),
+    let Some(text) = msg.text().or_else(|| msg.caption()) else {
+        return Ok(());
     };
 
     // Skip if message is a command
@@ -282,8 +276,8 @@ pub async fn store_message(env: Arc<BotEnv>, msg: Message) -> Result<()> {
             .count()
             .get_result(conn)?;
 
-        if count > max_history as i64 {
-            let excess = count - max_history as i64;
+        if count > i64::from(max_history) {
+            let excess = count - i64::from(max_history);
 
             // Get IDs of oldest messages to delete
             let to_delete: Vec<i32> = crate::schema::chat_history::table
@@ -312,7 +306,7 @@ pub async fn store_message(env: Arc<BotEnv>, msg: Message) -> Result<()> {
 }
 
 /// Store bot's response in chat history
-async fn store_bot_response(
+fn store_bot_response(
     env: &Arc<BotEnv>,
     original_msg: &Message,
     sent_msg: &Message,
@@ -339,7 +333,7 @@ async fn store_bot_response(
 }
 
 /// Retrieve chat history
-async fn get_chat_history(
+fn get_chat_history(
     env: &Arc<BotEnv>,
     chat_id: ChatId,
     thread_id: Option<ThreadId>,
@@ -358,7 +352,7 @@ async fn get_chat_history(
                     .eq(DbThreadId::from(thread_id)),
             )
             .order(crate::schema::chat_history::timestamp.desc())
-            .limit(max_history as i64)
+            .limit(i64::from(max_history))
             .load::<ChatHistoryEntry>(conn)
     })?;
 
@@ -366,7 +360,7 @@ async fn get_chat_history(
 }
 
 /// Get relevant memories (active and recently expired)
-async fn get_relevant_memories(
+fn get_relevant_memories(
     env: &Arc<BotEnv>,
     chat_id: ChatId,
     thread_id: Option<ThreadId>,
@@ -629,6 +623,7 @@ fn get_chat_completion_tools() -> Vec<ChatCompletionTool> {
 }
 
 /// Process message with LLM using the function calling protocol
+#[allow(clippy::too_many_lines)]
 async fn process_with_function_calling(
     bot: &Bot,
     env: &Arc<BotEnv>,
@@ -661,8 +656,7 @@ async fn process_with_function_calling(
     // Add current date and time
     let now = Local::now();
     let now_formatted = now.format("%Y-%m-%d %H:%M").to_string();
-    system_prompt
-        .push_str(&format!("Current Date and Time: {}\n\n", now_formatted));
+    write!(system_prompt, "Current Date and Time: {now_formatted}\n\n").ok();
 
     // Build chat history context
     let mut messages = Vec::new();
@@ -699,25 +693,27 @@ async fn process_with_function_calling(
                 (_, _, Some(_)) => "USER",
             };
 
-            let expires = match memory.expiration_date {
-                Some(expiration_date) => {
+            let expires = memory.expiration_date.map_or_else(
+                || "No expiration".to_string(),
+                |expiration_date| {
                     let expires = expiration_date
                         .and_local_timezone(Local)
                         .unwrap()
                         .format("%Y-%m-%d %H:%M")
                         .to_string();
                     format!("Expires: {expires}")
-                }
-                None => "No expiration".to_string(),
-            };
+                },
+            );
 
-            memory_content.push_str(&format!(
-                "[{status} Expires:{expires}][{scope}][ID:{rowid}] {}\n",
+            writeln!(
+                memory_content,
+                "[{status} Expires:{expires}][{scope}][ID:{rowid}] {}",
                 memory.memory_text,
                 rowid = memory.rowid
-            ));
+            )
+            .ok();
         }
-        memory_content.push_str("\n");
+        memory_content.push('\n');
     }
 
     // Add first user message with memories
@@ -739,7 +735,9 @@ async fn process_with_function_calling(
         history.iter().filter_map(|entry| entry.from_user_id).collect();
 
     // Fetch usernames for all users in history in a single query
-    let usernames: HashMap<DbUserId, String> = if !user_ids.is_empty() {
+    let usernames: HashMap<DbUserId, String> = if user_ids.is_empty() {
+        HashMap::new()
+    } else {
         env.transaction(|conn| {
             let results = crate::schema::tg_users::table
                 .filter(crate::schema::tg_users::id.eq_any(user_ids))
@@ -754,14 +752,11 @@ async fn process_with_function_calling(
                 .into_iter()
                 .map(|(id, username, first_name)| {
                     let display_name = username
-                        .map(|u| format!("@{}", u))
-                        .unwrap_or_else(|| first_name);
+                        .map_or_else(|| first_name, |u| format!("@{u}"));
                     (id, display_name)
                 })
                 .collect())
         })?
-    } else {
-        HashMap::new()
     };
 
     // Add chat history as assistant/user messages
@@ -799,8 +794,7 @@ async fn process_with_function_calling(
                 let user_message =
                     format!("{}: {}", display_name, entry.message_text);
 
-                user_message_combined
-                    .push_str(&format!("{}\n\n", user_message));
+                write!(user_message_combined, "{user_message}\n\n").ok();
             }
         }
         // Add any remaining user message
@@ -814,32 +808,30 @@ async fn process_with_function_calling(
     }
 
     // Add current message from user (with image if available)
-    let user_name = match msg.from.as_ref() {
-        Some(user) => {
-            if let Some(username) = &user.username {
-                format!("@{}", username)
-            } else {
-                user.first_name.clone()
-            }
-        }
-        None => "Unknown User".to_string(),
-    };
+    let user_name = msg.from.as_ref().map_or_else(
+        || "Unknown User".to_string(),
+        |user| {
+            user.username.as_ref().map_or_else(
+                || user.first_name.clone(),
+                |username| format!("@{username}"),
+            )
+        },
+    );
 
     let mut message_text = String::new();
 
     // Check if the message is a reply to another message
     if let Some(replied_to) = msg.reply_to_message() {
         // Get the username of the user being replied to
-        let replied_user_name = match replied_to.from.as_ref() {
-            Some(user) => {
-                if let Some(username) = &user.username {
-                    format!("@{}", username)
-                } else {
-                    user.first_name.clone()
-                }
-            }
-            None => "Unknown User".to_string(),
-        };
+        let replied_user_name = replied_to.from.as_ref().map_or_else(
+            || "Unknown User".to_string(),
+            |user| {
+                user.username.as_ref().map_or_else(
+                    || user.first_name.clone(),
+                    |username| format!("@{username}"),
+                )
+            },
+        );
 
         // Get the text of the replied message
         let replied_text =
@@ -853,10 +845,11 @@ async fn process_with_function_calling(
             .join("\n");
 
         // Format the message text
-        message_text.push_str(&format!(
-            "{} replied to ({}):\n{}\n\n",
-            user_name, replied_user_name, replied_text
-        ));
+        write!(
+            message_text,
+            "{user_name} replied to ({replied_user_name}):\n{replied_text}\n\n"
+        )
+        .ok();
 
         // Add the current message text
         message_text.push_str(msg.text().unwrap_or(""));
@@ -951,7 +944,7 @@ async fn process_with_function_calling(
             .messages(current_messages.clone())
             .tools(tools.clone())
             .tool_choice(ChatCompletionToolChoiceOption::Auto)
-            .max_tokens(500 as u32)
+            .max_tokens(500_u32)
             .temperature(0.6)
             .build()?;
 
@@ -1002,11 +995,10 @@ async fn process_with_function_calling(
                 let result = match function.name.as_str() {
                     "save_memory" => {
                         match handle_save_memory(env, msg, &function.arguments)
-                            .await
                         {
                             Ok(r) => r,
                             Err(e) => {
-                                log::error!("Error saving memory: {}", e);
+                                log::error!("Error saving memory: {e}");
                                 format!(
                                     "Error saving memory '{}': {}",
                                     function.arguments, e
@@ -1020,8 +1012,7 @@ async fn process_with_function_calling(
                                 Ok(args) => args,
                                 Err(e) => {
                                     log::error!(
-                                        "Error parsing remove_memory args: {}",
-                                        e
+                                        "Error parsing remove_memory args: {e}"
                                     );
                                     return Err(anyhow::anyhow!(
                                         "Error parsing remove_memory args: {}",
@@ -1029,12 +1020,10 @@ async fn process_with_function_calling(
                                     ));
                                 }
                             };
-                        match handle_remove_memory(env, msg, args.memory_id)
-                            .await
-                        {
+                        match handle_remove_memory(env, msg, args.memory_id) {
                             Ok(r) => r,
                             Err(e) => {
-                                log::error!("Error removing memory: {}", e);
+                                log::error!("Error removing memory: {e}");
                                 format!(
                                     "Error removing memory with ID {}: {}",
                                     args.memory_id, e
@@ -1046,13 +1035,13 @@ async fn process_with_function_calling(
                         let args: ExecuteCommandArgs =
                             serde_json::from_str(&function.arguments)?;
                         match handle_execute_command(
-                            bot, &env, &mac_state, msg, &args,
+                            bot, env, mac_state, msg, &args,
                         )
                         .await
                         {
                             Ok(r) => r,
                             Err(e) => {
-                                log::error!("Error executing command: {}", e);
+                                log::error!("Error executing command: {e}");
                                 format!(
                                     "Error executing command '{}': {}",
                                     args.command, e
@@ -1066,7 +1055,7 @@ async fn process_with_function_calling(
                         match handle_search(env, &args.query).await {
                             Ok(r) => r,
                             Err(e) => {
-                                log::error!("Error searching: {}", e);
+                                log::error!("Error searching: {e}");
                                 format!(
                                     "Error searching for '{}': {}",
                                     args.query, e
@@ -1075,8 +1064,8 @@ async fn process_with_function_calling(
                         }
                     }
                     unknown => {
-                        log::warn!("Unknown function call: {}", unknown);
-                        format!("Error: unknown function '{}'", unknown)
+                        log::warn!("Unknown function call: {unknown}");
+                        format!("Error: unknown function '{unknown}'")
                     }
                 };
 
@@ -1092,7 +1081,7 @@ async fn process_with_function_calling(
             // If no actual function calls were processed, break the loop
             if !had_function_calls {
                 if let Some(content) = &choice.message.content {
-                    final_response = content.clone();
+                    final_response.clone_from(content);
                 }
                 break;
             }
@@ -1101,7 +1090,7 @@ async fn process_with_function_calling(
         } else {
             // No function calls, we're done
             if let Some(content) = &choice.message.content {
-                final_response = content.clone();
+                final_response.clone_from(content);
             }
             break;
         }
@@ -1111,8 +1100,8 @@ async fn process_with_function_calling(
     Ok(final_response)
 }
 
-/// Handle save_memory function call
-async fn handle_save_memory(
+/// Handle `save_memory` function call
+fn handle_save_memory(
     env: &Arc<BotEnv>,
     msg: &Message,
     arguments: &str,
@@ -1138,30 +1127,19 @@ async fn handle_save_memory(
     }
 
     let now = Utc::now().naive_utc();
-    let expiration = if let Some(hours) = args.duration_hours {
+    let expiration = args.duration_hours.map(|hours| {
         let memory_limit = env.config.nlp.memory_limit;
-        Some(now + Duration::hours((hours as i64).min(memory_limit)))
-    } else {
-        None
-    };
+        now + Duration::hours(i64::from(hours).min(memory_limit))
+    });
 
-    let chat_id = if args.chat_specific {
-        Some(DbChatId::from(msg.chat.id))
-    } else {
-        None
-    };
+    let chat_id = args.chat_specific.then(|| DbChatId::from(msg.chat.id));
 
-    let thread_id = if args.thread_specific && args.chat_specific {
-        Some(DbThreadId::from(msg.thread_id.unwrap_or(GENERAL_THREAD_ID)))
-    } else {
-        None
-    };
+    let thread_id = (args.thread_specific && args.chat_specific)
+        .then(|| DbThreadId::from(msg.thread_id.unwrap_or(GENERAL_THREAD_ID)));
 
-    let user_id = if args.user_specific {
-        Some(DbUserId::from(msg.from.clone().expect("empty from user").id))
-    } else {
-        None
-    };
+    let user_id = args
+        .user_specific
+        .then(|| DbUserId::from(msg.from.clone().expect("empty from user").id));
 
     let new_memory = NewMemory {
         memory_text: &args.memory_text,
@@ -1187,8 +1165,8 @@ async fn handle_save_memory(
     Ok("Memory saved successfully.".to_string())
 }
 
-/// Handle remove_memory function call
-async fn handle_remove_memory(
+/// Handle `remove_memory` function call
+fn handle_remove_memory(
     env: &Arc<BotEnv>,
     msg: &Message,
     memory_id: i32,
@@ -1224,7 +1202,7 @@ async fn handle_remove_memory(
             .execute(conn)
     })?;
 
-    log::info!("Removed memory with ID: {}", memory_id);
+    log::info!("Removed memory with ID: {memory_id}");
 
     Ok("Memory removed successfully.".to_string())
 }
@@ -1244,7 +1222,7 @@ async fn handle_execute_command(
             match cmd_status_text(env, mac_state).await {
                 Ok(text) => text,
                 Err(e) => {
-                    log::error!("Error executing status command: {}", e);
+                    log::error!("Error executing status command: {e}");
                     return Err(anyhow::anyhow!(
                         "Error executing status command: {}",
                         e
@@ -1264,10 +1242,10 @@ async fn handle_execute_command(
             }
 
             // Handle needs command
-            match command_needs_text(&env) {
+            match command_needs_text(env) {
                 Ok(text) => text,
                 Err(e) => {
-                    log::error!("Error executing needs command: {}", e);
+                    log::error!("Error executing needs command: {e}");
                     return Err(anyhow::anyhow!(
                         "Error executing needs command: {}",
                         e
@@ -1289,8 +1267,8 @@ async fn handle_execute_command(
             // Handle need command
             let item = args.arguments.clone().unwrap_or_default();
             match add_items_text(
-                &bot,
-                &env,
+                bot,
+                env,
                 &[&item],
                 &msg.from.clone().expect("empty from user"),
             )
@@ -1298,7 +1276,7 @@ async fn handle_execute_command(
             {
                 Ok(text) => text,
                 Err(e) => {
-                    log::error!("Error executing need command: {}", e);
+                    log::error!("Error executing need command: {e}");
                     return Err(anyhow::anyhow!(
                         "Error executing need command: {}",
                         e
@@ -1319,14 +1297,14 @@ async fn handle_execute_command(
             // Request door opening with confirmation
             match butler::request_door_open_with_confirmation(
                bot,
-               env.clone(),
+               Arc::<BotEnv>::clone(env),
                msg.chat.id,
                msg.thread_id,
                &msg.from.clone().expect("empty from user"),
            ).await {
-              Ok(_) => "I've sent a confirmation request to open the door. Please confirm using the buttons.".to_string(),
+              Ok(()) => "I've sent a confirmation request to open the door. Please confirm using the buttons.".to_string(),
               Err(e) => {
-                log::error!("Error requesting door open: {}", e);
+                log::error!("Error requesting door open: {e}");
                 return Err(anyhow::anyhow!("Failed to request door opening: {}", e));
               }
            }
@@ -1340,16 +1318,16 @@ async fn handle_execute_command(
     Ok(r)
 }
 
-const SEARCH_PROMPT: &str = r#"You are a helpful assistant that can search for information.
+const SEARCH_PROMPT: &str = r"You are a helpful assistant that can search for information.
 You can use the search function to find relevant information based on the user's query.
 
 ALWAYS USE THE SEARCH FUNCTION TO FIND INFORMATION.
 DO NOT USE MARKDOWN OR HTML FORMATTING.
 DO NOT USE YOUR OWN KNOWLEDGE, ONLY USE THE SEARCH FUNCTION.
-"#;
+";
 
 async fn handle_search(env: &Arc<BotEnv>, query: &str) -> Result<String> {
-    log::debug!("Searching for: {}", query);
+    log::debug!("Searching for: {query}");
 
     // Construct request
     let request = CreateChatCompletionRequestArgs::default()
@@ -1366,7 +1344,7 @@ async fn handle_search(env: &Arc<BotEnv>, query: &str) -> Result<String> {
                     .build()?,
             ),
         ])
-        .max_tokens(1500 as u32)
+        .max_tokens(1500_u32)
         .temperature(0.6)
         .build()?;
 
@@ -1400,7 +1378,7 @@ async fn handle_search(env: &Arc<BotEnv>, query: &str) -> Result<String> {
         return Err(anyhow::anyhow!("Empty response from search"));
     }
 
-    log::debug!("Search result: {}", content);
+    log::debug!("Search result: {content}");
 
     // Return the search result
     Ok(content)

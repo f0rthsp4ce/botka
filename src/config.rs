@@ -122,6 +122,7 @@ pub struct OpenAI {
     pub disable: bool,
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn default_openai_api_base() -> Option<String> {
     Some("https://openrouter.ai/api/v1".to_string())
 }
@@ -213,16 +214,16 @@ pub struct NlpConfig {
     #[serde(default = "default_search_model")]
     pub search_model: String,
     #[serde(default = "default_max_history")]
-    pub max_history: usize,
+    pub max_history: u16,
     #[serde(default = "default_memory_limit")]
     pub memory_limit: i64,
 }
 
-fn default_max_history() -> usize {
+const fn default_max_history() -> u16 {
     100
 }
 
-fn default_memory_limit() -> i64 {
+const fn default_memory_limit() -> i64 {
     24 * 7 // Default to 1 week in hours
 }
 

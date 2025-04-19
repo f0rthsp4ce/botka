@@ -167,6 +167,7 @@ pub struct UserSshKey {
     pub key: String,
 }
 
+#[allow(clippy::struct_field_names)]
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::memories)]
 pub struct Memory {

@@ -191,13 +191,12 @@ pub async fn add_items_text(
     let list_items = replace_urls_with_titles(list_items).await;
 
     // Create a message that mentions the user
-    let user_mention = if let Some(last_name) = &user.last_name {
-        format!("{} {}", user.first_name, last_name)
-    } else {
-        user.first_name.clone()
-    };
+    let user_mention = user.last_name.as_ref().map_or_else(
+        || user.first_name.clone(),
+        |last_name| format!("{} {}", user.first_name, last_name),
+    );
     let items_text = list_items.join(", ");
-    let message_text = format!("{} needs: {}", user_mention, items_text);
+    let message_text = format!("{user_mention} needs: {items_text}");
 
     // Send message to the needs chat
     let pinned_message = bot
