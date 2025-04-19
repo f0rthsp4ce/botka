@@ -128,7 +128,7 @@ fn default_openai_api_base() -> Option<String> {
 }
 
 fn default_openai_model() -> String {
-    "openai/gpt-4.1".to_string()
+    "google/gemini-2.5-flash-preview".to_string()
 }
 
 pub fn default_ldap_groups_dn() -> String {
