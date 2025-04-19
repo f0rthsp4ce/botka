@@ -347,7 +347,6 @@ async fn get_relevant_memories(
     user_id: UserId,
 ) -> Result<Vec<Memory>> {
     let thread_id = thread_id.unwrap_or(GENERAL_THREAD_ID);
-    let now = Utc::now().naive_utc();
     let yesterday = (Utc::now() - Duration::days(1)).naive_utc();
 
     // Fetch all memories that are either active, have null expiration, or expired within the last day
@@ -370,42 +369,11 @@ async fn get_relevant_memories(
     let filtered_memories = all_memories
         .into_iter()
         .filter(|memory| {
-            // If expiration_date is None, consider it always active
-            if memory.expiration_date.is_none() {
-                return true;
-            }
-
-            // For non-null expiration dates, check if active or recently expired
-            let expiry = memory.expiration_date.unwrap();
-            let is_active = expiry > now;
-            let is_recently_expired = expiry <= now && expiry > yesterday;
-
-            // Skip if neither active nor recently expired
-            if !is_active && !is_recently_expired {
-                return false;
-            }
-
-            // Check if this is a global memory
-            let is_global = memory.chat_id.is_none();
-
-            // Check if this is a chat-level memory for our chat
-            let is_chat_level = memory.chat_id == Some(DbChatId::from(chat_id))
-                && memory.thread_id.is_none();
-
-            // Check if this is a thread-level memory for our thread
-            let is_thread_level = memory.chat_id
-                == Some(DbChatId::from(chat_id))
-                && memory.thread_id == Some(DbThreadId::from(thread_id));
-
-            // Check if this is a user-specific memory
-            let is_user_specific =
-                memory.user_id == Some(DbUserId::from(user_id));
-
-            // Include if it's a global, chat-level, or thread-level memory (regardless of user)
-            // OR if it's a user-specific memory at any scope level
-            (is_global || is_chat_level || is_thread_level)
-                || (is_user_specific
-                    && (is_global || is_chat_level || is_thread_level))
+            (memory.chat_id.is_none() || memory.chat_id == Some(chat_id.into()))
+                && (memory.thread_id.is_none()
+                    || memory.thread_id == Some(thread_id.into()))
+                && (memory.user_id.is_none()
+                    || memory.user_id == Some(user_id.into()))
         })
         .collect();
 
