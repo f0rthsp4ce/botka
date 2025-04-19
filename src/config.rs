@@ -111,7 +111,7 @@ pub struct WikiJs {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OpenAI {
     pub api_key: String,
-    #[serde(default)]
+    #[serde(default = "default_openai_api_base")]
     pub api_base: Option<String>,
     #[serde(default = "default_openai_model")]
     pub model: String,
@@ -119,8 +119,12 @@ pub struct OpenAI {
     pub disable: bool,
 }
 
+fn default_openai_api_base() -> Option<String> {
+    Some("https://openrouter.ai/api/v1".to_string())
+}
+
 fn default_openai_model() -> String {
-    "gpt-4.1".to_string()
+    "openai/gpt-4.1".to_string()
 }
 
 pub fn default_ldap_groups_dn() -> String {
@@ -197,6 +201,8 @@ pub struct NlpConfig {
     pub enabled: bool,
     #[serde(default = "default_model")]
     pub model: String,
+    #[serde(default = "default_search_model")]
+    pub search_model: String,
     #[serde(default = "default_max_history")]
     pub max_history: usize,
     #[serde(default = "default_memory_limit")]
@@ -212,7 +218,11 @@ fn default_memory_limit() -> i64 {
 }
 
 fn default_model() -> String {
-    "gpt-4.1".to_string()
+    "openai/gpt-4.1".to_string()
+}
+
+fn default_search_model() -> String {
+    "openai/gpt-4o-search-preview".to_string()
 }
 
 #[cfg(test)]
