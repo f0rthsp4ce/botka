@@ -153,15 +153,19 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
 
     let ldap_client = Arc::new(tokio::sync::Mutex::new(LdapClientState::new()));
 
+    let mut openai_config = async_openai::config::OpenAIConfig::new()
+        .with_api_key(config.services.openai.api_key.clone());
+
+    if let Some(api_base) = &config.services.openai.api_base {
+        openai_config = openai_config.with_api_base(api_base.clone());
+    }
+
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&format!(
             "sqlite://{DB_FILENAME}"
         ))?),
         reqwest_client: reqwest_client.clone(),
-        openai_client: async_openai::Client::with_config(
-            async_openai::config::OpenAIConfig::new()
-                .with_api_key(config.services.openai.api_key.clone()),
-        ),
+        openai_client: async_openai::Client::with_config(openai_config),
         config: Arc::<config::Config>::clone(&config),
         config_path: config_fpath.into(),
         ldap_client: Arc::<tokio::sync::Mutex<common::LdapClientState>>::clone(

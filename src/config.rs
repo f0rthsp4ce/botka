@@ -112,6 +112,8 @@ pub struct WikiJs {
 pub struct OpenAI {
     pub api_key: String,
     #[serde(default)]
+    pub api_base: Option<String>,
+    #[serde(default)]
     pub disable: bool,
 }
 
