@@ -387,7 +387,7 @@ pub fn command_needs_text(env: &BotEnv) -> Result<String> {
 
     // Initialize the string buffer to build the response text.
     let mut text = String::new();
-    write!(text, "<b>Needed Items:</b>\n\n").unwrap(); // Add a title
+    write!(text, "Needed Items:\n\n").unwrap(); // Add a title
 
     // Iterate through the fetched items, using subnumerate to potentially group
     // items from the same original request message (though the placeholder subnumerate doesn't do grouping).
@@ -411,7 +411,7 @@ pub fn command_needs_text(env: &BotEnv) -> Result<String> {
         // --- Start formatting the item entry ---
 
         // Write the main index number (1, 2, 3...).
-        write!(text, "<b>{}.</b>", idx1 + 1).unwrap();
+        write!(text, "{}.", idx1 + 1).unwrap();
         // If there's a sub-index (a, b, c...), append it.
         if let Some(idx2_val) = idx2 {
             letter_index(&mut text, idx2_val);
@@ -421,7 +421,7 @@ pub fn command_needs_text(env: &BotEnv) -> Result<String> {
         write!(text, " {} ", html::escape(&item.item)).unwrap();
 
         // Add the item's unique ID (rowid) in parentheses.
-        write!(text, "(ID: <code>{}</code>) ", item.rowid).unwrap(); // Added item ID here
+        write!(text, "(ID: {}) ", item.rowid).unwrap(); // Added item ID here
 
         // Start the link to the original message.
         write!(text, "(from ").unwrap();
@@ -439,7 +439,6 @@ pub fn command_needs_text(env: &BotEnv) -> Result<String> {
         // Add the requester's information.
         write!(text, "by ").unwrap();
         format_user(&mut text, item.request_user_id, &user, false); // Format user name/details
-        text.push_str("</a>)\n"); // Close the link and add a newline
     }
 
     // Return the fully constructed text string.
