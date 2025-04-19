@@ -134,14 +134,24 @@ fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
 
     // Check for trigger words defined in config
     let trigger_words = &env.config.nlp.trigger_words;
-    let text_lower = text.to_lowercase();
 
-    // If no trigger words defined, or message contains a trigger word
-    if trigger_words.is_empty()
-        || trigger_words
-            .iter()
-            .any(|word| text_lower.contains(&word.to_lowercase()))
-    {
+    // If no trigger words defined, then process the message
+    if trigger_words.is_empty() {
+        return Some(msg);
+    }
+
+    // Split text into words and normalize
+    let text_words: Vec<String> = text
+        .split_whitespace()
+        .map(|word| word.trim_matches(|c: char| !c.is_alphanumeric()))
+        .map(|word| word.to_lowercase())
+        .collect();
+
+    // Check if any trigger word matches a complete word in the message
+    if trigger_words.iter().any(|trigger| {
+        let trigger_lower = trigger.to_lowercase();
+        text_words.contains(&trigger_lower)
+    }) {
         return Some(msg);
     }
 
