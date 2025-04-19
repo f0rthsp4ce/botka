@@ -12,7 +12,8 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use async_openai::types::{
-    ChatCompletionRequestMessage, ChatCompletionRequestMessageContentPartImage,
+    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
+    ChatCompletionRequestMessageContentPartImage,
     ChatCompletionRequestMessageContentPartText,
     ChatCompletionRequestSystemMessageArgs,
     ChatCompletionRequestUserMessageArgs,
@@ -637,6 +638,11 @@ async fn process_with_function_calling(
                 .content(memory_content)
                 .build()?,
         ));
+        messages.push(ChatCompletionRequestMessage::Assistant(
+            ChatCompletionRequestAssistantMessageArgs::default()
+                .content("OK, I will remember this.".to_string())
+                .build()?,
+        ));
     }
 
     // Collect user IDs from history for looking up usernames
@@ -688,13 +694,11 @@ async fn process_with_function_calling(
                 }
 
                 // Bot message
-                messages.push(
-                ChatCompletionRequestMessage::Assistant(
-                    async_openai::types::ChatCompletionRequestAssistantMessageArgs::default()
+                messages.push(ChatCompletionRequestMessage::Assistant(
+                    ChatCompletionRequestAssistantMessageArgs::default()
                         .content(entry.message_text.clone())
-                        .build()?
-                )
-            );
+                        .build()?,
+                ));
             } else {
                 // User message
                 let display_name = entry
