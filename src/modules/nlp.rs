@@ -558,17 +558,30 @@ async fn process_with_function_calling(
     // Define available tools (functions)
     let tools = get_chat_completion_tools();
 
-    // Construct system prompt with memory information
+    // Construct basic system prompt without memories
     let mut system_prompt = PROMPT.to_string();
 
     // Add current date and time
     let now = Local::now();
-    let now = now.format("%Y-%m-%d %H:%M:%S").to_string();
-    system_prompt.push_str(&format!("Current Date and Time: {}\n\n", now));
+    let now_formatted = now.format("%Y-%m-%d %H:%M").to_string();
+    system_prompt.push_str(&format!("Current Date and Time: {}\n\n", now_formatted));
 
-    // Add memories to the system prompt
+    // Build chat history context
+    let mut messages = Vec::new();
+
+    // Add system message with just the basic prompt
+    messages.push(ChatCompletionRequestMessage::System(
+        ChatCompletionRequestSystemMessageArgs::default()
+            .content(system_prompt)
+            .build()?,
+    ));
+
+    // Create a separate first user message with memory information
+    let mut memory_content = String::new();
+
+    // Add memories to the first user message
     if !memories.is_empty() {
-        system_prompt.push_str("## Active Memories\n");
+        memory_content.push_str("## Active Memories\n");
         for memory in memories {
             let status = match memory.expiration_date {
                 Some(expiration_date)
@@ -588,24 +601,23 @@ async fn process_with_function_calling(
                 (_, _, Some(_)) => "USER",
             };
 
-            system_prompt.push_str(&format!(
+            memory_content.push_str(&format!(
                 "[{status}][{scope}][ID:{rowid}] {}\n",
                 memory.memory_text,
                 rowid = memory.rowid
             ));
         }
-        system_prompt.push_str("\n");
+        memory_content.push_str("\n");
     }
 
-    // Build chat history context
-    let mut messages = Vec::new();
-
-    // Add system message
-    messages.push(ChatCompletionRequestMessage::System(
-        ChatCompletionRequestSystemMessageArgs::default()
-            .content(system_prompt)
-            .build()?,
-    ));
+    // Add first user message with memories
+    if !memory_content.trim().is_empty() {
+        messages.push(ChatCompletionRequestMessage::User(
+            ChatCompletionRequestUserMessageArgs::default()
+                .content(memory_content)
+                .build()?,
+        ));
+    }
 
     // Collect user IDs from history for looking up usernames
     let user_ids: Vec<DbUserId> =
