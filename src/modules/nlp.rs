@@ -420,6 +420,8 @@ You can use ONLY this formatting for your responses:
 Do not use any other formatting. Always close tags. Do not nest tags.
 Do not add extra attributes to tags.
 
+Use formatting only when it is necessary, do not overuse it.
+
 You can execute bot commands or save memories for future reference, or respond directly to users' questions.
 
 Messages are provided in format "<username>: <message text>".
