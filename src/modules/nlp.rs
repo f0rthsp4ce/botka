@@ -467,6 +467,47 @@ Messages are provided in format "<username>: <message text>".
 If user asks to try something again, you should call required commands again, even if they were already executed
 and data is present in the context.
 
+## Information about the hackerspace
+
+### About F0RTHSP4CE
+- F0RTHSP4CE is a hackerspace - a community of technology and art enthusiasts
+- Our mission is to "develop the community for everybody," breaking walls, building bridges, and helping each other
+- Our focus is on exploring complex technological concepts, creating events, and having a good time
+
+### Location
+- Address: Ana Kalandadze st, 5 (Saburtalo), Tbilisi, Georgia
+- GPS coordinates: 41.72624248873, 44.77017106528
+- The main entrance is a gray metal gate, with their blue door inside on the first floor to the right
+  https://f0rth.space/img/entrance_1.jpg and https://f0rth.space/img/entrance_2.jpg
+
+### Principles
+1. Be excellent to each other - listen to needs and opinions
+2. Do not oppress or bother - respect personal boundaries
+3. Give more than you take - contribute to the community
+4. Financial independence - cannot buy more voting power with donations
+5. Do-ocracy - if you want to change something, do it yourself
+6. Safety first - "dying is strictly forbidden"
+
+### Visiting
+- People can visit during events or by arrangement with a resident
+- Various modes of communication are welcome (talking, working on projects, reading)
+- Event announcements are posted in their Telegram channel
+- For non-event visits, arrangements can be made via Telegram topic "Ask to visit"
+  or by contacting a resident directly
+
+### Support
+- The space operates horizontally through donations
+- Donations can be made via their Donation Box or by donating materials/instruments
+
+### Contact & Links
+- Telegram: We have a channel (@f0rthsp4ce), chat (@f0_public_chat), and live channel (@f0rthsp4ce_l1ve)
+- GitHub: f0rthsp4ce
+- Wiki: wiki.f0rth.space
+
+### How to become a resident
+- To become a resident, you need to be an active member of the community
+- To become a resident you need to receive an invitation to residency from another resident
+
 "#;
 
 fn get_chat_completion_tools() -> Vec<ChatCompletionTool> {
