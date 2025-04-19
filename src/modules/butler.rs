@@ -70,12 +70,20 @@ async fn cmd_open(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
 }
 
 /// Execute the actual door opening request
-async fn execute_door_open(url: String, token: String) -> Result<()> {
+async fn execute_door_open(
+    url: String,
+    token: String,
+    user: &User,
+) -> Result<()> {
     let client = reqwest::Client::new();
+
+    // Get the username or fallback to full name if username is not available
+    let username = user.username.clone().unwrap_or_else(|| user.full_name());
 
     let response = client
         .post(url)
         .header("Cookie", format!("ses={}", token))
+        .form(&[("username", username)]) // Add username as a POST parameter
         .send()
         .await?;
 
@@ -137,12 +145,13 @@ async fn handle_callback(
                 "Opening door for {} ({}, @{})",
                 callback.from.full_name(),
                 callback.from.id,
-                callback.from.username.unwrap_or_default()
+                callback.from.username.clone().unwrap_or_default()
             );
 
             match execute_door_open(
                 butler_config.url.clone(),
                 butler_config.token.clone(),
+                &callback.from, // Pass the user reference to execute_door_open
             )
             .await
             {
