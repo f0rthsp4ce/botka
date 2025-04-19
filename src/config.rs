@@ -113,6 +113,7 @@ pub struct OpenAI {
     pub api_key: String,
     #[serde(default = "default_openai_api_base")]
     pub api_base: Option<String>,
+    /// Used for borrowed items
     #[serde(default = "default_openai_model")]
     pub model: String,
     #[serde(default)]
@@ -222,7 +223,7 @@ fn default_model() -> String {
 }
 
 fn default_search_model() -> String {
-    "openai/gpt-4o-search-preview".to_string()
+    "openai/gpt-4o-mini-search-preview".to_string()
 }
 
 #[cfg(test)]

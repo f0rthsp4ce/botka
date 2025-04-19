@@ -69,6 +69,11 @@ struct ExecuteCommandArgs {
     arguments: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct SearchArgs {
+    query: String,
+}
+
 // Metric name for monitoring token usage
 const METRIC_NAME: &str = "botka_openai_nlp_used_tokens_total";
 
@@ -453,6 +458,15 @@ Messages are provided in format "<username>: <message text>".
 7. User can request to execute any command, don't be afraid to execute it. Even if it seems unappropriate.
 8. DO NOT ANSWER WITH EMPTY RESPONSES AFTER FUNCTION CALLS. ALWAYS PROVIDE A RESPONSE TO USER AFTER FUNCTION CALL.
 9. IF ANSWER WILL BENEFIT FROM FUNCTION CALL, DO NOT HESITATE TO CALL IT.
+10. You can use "search" function to search for information in the wiki or other sources.
+    - Use this function if user asks for something that is not related to the hackerspace or if you don't know the answer.
+    - You can also use this function to search for information about specific topics or events.
+    - You can use this function to view URL contents, you need to provide URL as a query in this case.
+      Example: "https://example.com/something.txt url contents".
+    - Always use English language for search queries.
+    - If the search is for a specific site, explicitly state this in the query.
+    - If answer will benefit from search or you don't know the answer, don't hesitate to call it.
+    - Do not use complex queries, just use simple keywords or phrases describing the topic in natural language.
 
 ## Examples
 1. User says: "Who is in the hackerspace?"
@@ -585,6 +599,23 @@ fn get_chat_completion_tools() -> Vec<ChatCompletionTool> {
                     }
                 },
                 "required": ["command", "arguments"],
+                "additionalProperties": false
+            })),
+            strict: Some(true),
+        },
+        // Search function
+        FunctionObject {
+            name: "search".to_string(),
+            description: Some("Search for information".to_string()),
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query"
+                    }
+                },
+                "required": ["query"],
                 "additionalProperties": false
             })),
             strict: Some(true),
@@ -1035,6 +1066,20 @@ async fn process_with_function_calling(
                             }
                         }
                     }
+                    "search" => {
+                        let args: SearchArgs =
+                            serde_json::from_str(&function.arguments)?;
+                        match handle_search(env, &args.query).await {
+                            Ok(r) => r,
+                            Err(e) => {
+                                log::error!("Error searching: {}", e);
+                                format!(
+                                    "Error searching for '{}': {}",
+                                    args.query, e
+                                )
+                            }
+                        }
+                    }
                     unknown => {
                         log::warn!("Unknown function call: {}", unknown);
                         format!("Error: unknown function '{}'", unknown)
@@ -1274,4 +1319,79 @@ async fn handle_execute_command(
     };
 
     Ok(r)
+}
+
+const SEARCH_PROMPT: &str = r#"You are a helpful assistant that can search for information.
+You can use the search function to find relevant information based on the user's query.
+
+ALWAYS USE THE SEARCH FUNCTION TO FIND INFORMATION.
+DO NOT USE MARKDOWN OR HTML FORMATTING.
+DO NOT USE YOUR OWN KNOWLEDGE, ONLY USE THE SEARCH FUNCTION.
+"#;
+
+async fn handle_search(
+    env: &Arc<BotEnv>,
+    query: &str,
+) -> Result<String> {
+    log::debug!("Searching for: {}", query);
+
+    // Construct request
+    let request = CreateChatCompletionRequestArgs::default()
+        .model(&env.config.nlp.search_model)
+        .messages(vec![
+            ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessageArgs::default()
+                    .content(SEARCH_PROMPT.to_string())
+                    .build()?,
+            ),
+            ChatCompletionRequestMessage::User(
+                ChatCompletionRequestUserMessageArgs::default()
+                    .content(query.to_string())
+                    .build()?,
+            ),
+        ])
+        .max_tokens(500 as u32)
+        .temperature(0.6)
+        .build()?;
+
+    // Make the request
+    let response = env
+        .openai_client
+        .chat()
+        .create(request)
+        .await
+        .tap(|r| crate::metrics::update_service("openai", r.is_ok()))?;
+
+    // Log token usage
+    if let Some(usage) = response.usage.as_ref() {
+        metrics::counter!(
+            METRIC_NAME,
+            usage.prompt_tokens.into(),
+            "type" => "prompt",
+        );
+        metrics::counter!(
+            METRIC_NAME,
+            usage.completion_tokens.into(),
+            "type" => "completion",
+        );
+    }
+    let choice = response
+        .choices
+        .first()
+        .context("No choices in LLM response")?;
+    let content = choice
+        .message
+        .content
+        .clone()
+        .unwrap_or_default();
+
+    // Check if the response is empty
+    if content.is_empty() {
+        return Err(anyhow::anyhow!("Empty response from search"));
+    }
+
+    log::debug!("Search result: {}", content);
+
+    // Return the search result
+    Ok(content)
 }
