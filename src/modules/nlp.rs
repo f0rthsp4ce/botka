@@ -12,13 +12,14 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use async_openai::types::{
-    ChatCompletionRequestMessage, ChatCompletionRequestMessageContentPartText,
+    ChatCompletionRequestMessage, ChatCompletionRequestMessageContentPartImage,
+    ChatCompletionRequestMessageContentPartText,
     ChatCompletionRequestSystemMessageArgs,
     ChatCompletionRequestUserMessageArgs,
     ChatCompletionRequestUserMessageContent,
     ChatCompletionRequestUserMessageContentPart, ChatCompletionTool,
     ChatCompletionToolChoiceOption, ChatCompletionToolType,
-    CreateChatCompletionRequestArgs, FunctionObject,
+    CreateChatCompletionRequestArgs, FunctionObject, ImageDetail, ImageUrl,
 };
 use chrono::{Duration, Local, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
@@ -92,8 +93,11 @@ fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
         return None;
     }
 
-    // Skip messages without text
-    let text = msg.text()?;
+    // Skip messages without text or without caption
+    let text = match msg.text().or(msg.caption()) {
+        Some(text) => text,
+        None => return None,
+    };
 
     // Skip bot commands (those starting with '/')
     if text.starts_with('/') {
@@ -541,7 +545,7 @@ async fn process_with_function_calling(
     if let Some(thread_id) = msg.thread_id_ext() {
         typing_builder = typing_builder.message_thread_id(thread_id);
     }
-    typing_builder.await.log_error(module_path!(), "send_chat_action fauled");
+    typing_builder.await.log_error(module_path!(), "send_chat_action failed");
 
     // Choose the model from config or default to a reasonable one
     let model = &env.config.nlp.model;
@@ -661,7 +665,7 @@ async fn process_with_function_calling(
         }
     }
 
-    // Add current message from user
+    // Add current message from user (with image if available)
     let user_name = match msg.from.as_ref() {
         Some(user) => {
             if let Some(username) = &user.username {
@@ -675,10 +679,71 @@ async fn process_with_function_calling(
 
     let message_text = format!("{}: {}", user_name, msg.text().unwrap_or(""));
 
-    let message_parts =
-        vec![ChatCompletionRequestUserMessageContentPart::Text(
-            ChatCompletionRequestMessageContentPartText { text: message_text },
-        )];
+    // Create a vector to hold the message content parts
+    let mut message_parts = Vec::new();
+
+    // Add text part
+    message_parts.push(ChatCompletionRequestUserMessageContentPart::Text(
+        ChatCompletionRequestMessageContentPartText { text: message_text },
+    ));
+
+    // Check for image in current message
+    if let Some(photos) = msg.photo() {
+        if let Some(largest_photo) = photos.last() {
+            match bot.get_file(&largest_photo.file.id).await {
+                Ok(file) => {
+                    let file_url = format!(
+                        "https://api.telegram.org/file/bot{}/{}",
+                        bot.token(),
+                        file.path
+                    );
+                    debug!("Adding image from message, URL: {file_url}");
+                    message_parts.push(
+                        ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                            ChatCompletionRequestMessageContentPartImage {
+                                image_url: ImageUrl {
+                                    url: file_url,
+                                    detail: Some(ImageDetail::Auto),
+                                },
+                            },
+                        ),
+                    );
+                }
+                Err(e) => {
+                    log::error!("Failed to get file for photo: {e}");
+                }
+            }
+        }
+    }
+
+    // Check for image in replied-to message
+    if let Some(replied_to) = msg.reply_to_message() {
+        if let Some(photos) = replied_to.photo() {
+            if let Some(largest_photo) = photos.last() {
+                match bot.get_file(&largest_photo.file.id).await {
+                    Ok(file) => {
+                        let file_url = format!(
+                            "https://api.telegram.org/file/bot{}/{}",
+                            bot.token(),
+                            file.path
+                        );
+                        debug!("Adding image from replied message, URL: {file_url}");
+                        message_parts.push(ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                            ChatCompletionRequestMessageContentPartImage {
+                                image_url: ImageUrl {
+                                    url: file_url,
+                                    detail: Some(ImageDetail::Auto)
+                                },
+                            },
+                        ));
+                    }
+                    Err(e) => {
+                        log::error!("Failed to get file for photo in replied message: {e}");
+                    }
+                }
+            }
+        }
+    }
 
     messages.push(ChatCompletionRequestMessage::User(
         ChatCompletionRequestUserMessageArgs::default()
