@@ -564,7 +564,8 @@ async fn process_with_function_calling(
     // Add current date and time
     let now = Local::now();
     let now_formatted = now.format("%Y-%m-%d %H:%M").to_string();
-    system_prompt.push_str(&format!("Current Date and Time: {}\n\n", now_formatted));
+    system_prompt
+        .push_str(&format!("Current Date and Time: {}\n\n", now_formatted));
 
     // Build chat history context
     let mut messages = Vec::new();
@@ -601,8 +602,20 @@ async fn process_with_function_calling(
                 (_, _, Some(_)) => "USER",
             };
 
+            let expires = match memory.expiration_date {
+                Some(expiration_date) => {
+                    let expires = expiration_date
+                        .and_local_timezone(Local)
+                        .unwrap()
+                        .format("%Y-%m-%d %H:%M")
+                        .to_string();
+                    format!("Expires: {expires}")
+                }
+                None => "No expiration".to_string(),
+            };
+
             memory_content.push_str(&format!(
-                "[{status}][{scope}][ID:{rowid}] {}\n",
+                "[{status} Expires:{expires}][{scope}][ID:{rowid}] {}\n",
                 memory.memory_text,
                 rowid = memory.rowid
             ));
