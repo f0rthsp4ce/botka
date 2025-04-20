@@ -341,6 +341,9 @@ fn get_chat_history(
     let thread_id = thread_id.unwrap_or(GENERAL_THREAD_ID);
     let max_history = env.config.nlp.max_history;
 
+    // Calculate timestamp from 24 hours ago
+    let day_ago = (Utc::now() - Duration::hours(24)).naive_utc();
+
     let history = env.transaction(|conn| {
         crate::schema::chat_history::table
             .filter(
@@ -351,6 +354,7 @@ fn get_chat_history(
                 crate::schema::chat_history::thread_id
                     .eq(DbThreadId::from(thread_id)),
             )
+            .filter(crate::schema::chat_history::timestamp.ge(day_ago))
             .order(crate::schema::chat_history::timestamp.desc())
             .limit(i64::from(max_history))
             .load::<ChatHistoryEntry>(conn)
@@ -405,16 +409,20 @@ const PROMPT: &str = r#"You are a helpful assistant integrated with a Telegram b
 You are designed to assist users in a chat environment, providing information and executing commands.
 Your responses should be concise and relevant to the user's request.
 
-Response should be as concise and short as possible, but still informative.
-Answer in user language.
-
-DO NOT USE ANY FORMATTING (bold, italic, etc.) IN YOUR RESPONSES.
-
-Use formatting only when it is necessary, do not overuse it.
-
 You can execute bot commands or save memories for future reference, or respond directly to users' questions.
 
 Messages are provided in format "<username>: <message text>".
+
+## Response Style Guidelines
+- Keep all responses brief and to the point, unless the user asks for more details.
+- Avoid unnecessary words, pleasantries, or explanations.
+- Use minimal language while preserving key information.
+- Do not use emojis or expressive punctuation.
+- No apologizing or verbose explanations.
+- ALWAYS ANSWER IN USER LANGUAGE.
+- NEVER USE FORMATTING (bold, italic, markdown links etc.) IN YOUR RESPONSES.
+- Use a reserved, matter-of-fact tone. Avoid overly friendly or enthusiastic language.
+- Skip greetings/closings when possible.
 
 ## Available Commands
 - status - show space status. Includes information about all residents that are currently in hackerspace.
