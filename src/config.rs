@@ -209,10 +209,15 @@ pub struct NlpConfig {
     pub trigger_words: Vec<String>,
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default = "default_model")]
-    pub model: String,
+    /// Used models in order of performance
+    /// and cost. The first one is the cheapest
+    /// and dummy model.
+    #[serde(default = "default_models")]
+    pub models: Vec<String>,
     #[serde(default = "default_search_model")]
     pub search_model: String,
+    #[serde(default = "default_classification_model")]
+    pub classification_model: Option<String>,
     #[serde(default = "default_max_history")]
     pub max_history: u16,
     #[serde(default = "default_memory_limit")]
@@ -227,12 +232,20 @@ const fn default_memory_limit() -> i64 {
     24 * 7 // Default to 1 week in hours
 }
 
-fn default_model() -> String {
-    "openai/gpt-4.1".to_string()
+fn default_models() -> Vec<String> {
+    vec![
+        "openai/gpt-4.1-nano".to_string(),
+        "openai/gpt-4.1-mini".to_string(),
+        "openai/gpt-4.1".to_string(),
+    ]
 }
 
 fn default_search_model() -> String {
     "openai/gpt-4o-mini-search-preview".to_string()
+}
+
+fn default_classification_model() -> Option<String> {
+    Some("openai/gpt-4.1-nano".to_string())
 }
 
 #[cfg(test)]

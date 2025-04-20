@@ -22,6 +22,7 @@ use async_openai::types::{
     ChatCompletionRequestUserMessageContentPart, ChatCompletionTool,
     ChatCompletionToolChoiceOption, ChatCompletionToolType,
     CreateChatCompletionRequestArgs, FunctionObject, ImageDetail, ImageUrl,
+    ResponseFormat, ResponseFormatJsonSchema,
 };
 use chrono::{Duration, Local, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
@@ -657,9 +658,6 @@ async fn process_with_function_calling(
     }
     typing_builder.await.log_error(module_path!(), "send_chat_action failed");
 
-    // Choose the model from config or default to a reasonable one
-    let model = &env.config.nlp.model;
-
     // Define available tools (functions)
     let tools = get_chat_completion_tools();
 
@@ -876,7 +874,9 @@ async fn process_with_function_calling(
 
     // Add text part
     message_parts.push(ChatCompletionRequestUserMessageContentPart::Text(
-        ChatCompletionRequestMessageContentPartText { text: message_text },
+        ChatCompletionRequestMessageContentPartText {
+            text: message_text.clone(),
+        },
     ));
 
     // Check for image in current message
@@ -944,6 +944,26 @@ async fn process_with_function_calling(
             ))
             .build()?,
     ));
+
+    // Before sending the request classify it to determine appropriate model
+    let classification =
+        classify_request(&env, &message_text).await.unwrap_or_default();
+
+    // Choose the model based on the classification
+    let model = match classification {
+        ClassificationResult::Ignore => {
+            return Err(anyhow::anyhow!("Ignoring message: {message_text}"));
+        }
+        ClassificationResult::Handle(complexity) => {
+            env.config.nlp.models.get((complexity - 1) as usize).ok_or_else(
+                || {
+                    anyhow::anyhow!(
+                        "No model found for classification: {complexity}"
+                    )
+                },
+            )?
+        }
+    };
 
     // Start the function calling loop
     let mut current_messages = messages.clone();
@@ -1395,4 +1415,167 @@ async fn handle_search(env: &Arc<BotEnv>, query: &str) -> Result<String> {
 
     // Return the search result
     Ok(content)
+}
+
+const CLASSIFICATION_PROMPT: &str = r#"You are a precise classification assistant that categorizes user requests.
+
+CLASSIFICATION CATEGORIES:
+1. HANDLE 1 (return value: 1): Simple requests requiring minimal processing
+   - Greetings (hello, hi, hey)
+   - Simple status inquiries (how are you, what can you do)
+   - Basic acknowledgments (thanks, okay)
+
+2. HANDLE 2 (return value: 2): Standard requests requiring moderate processing
+   - Commands or instructions (open door, add item)
+   - Information retrieval tasks
+   - API or service interactions
+   - Multi-step but straightforward tasks
+   - Uncertain classifications (default fallback)
+
+3. HANDLE 3 (return value: 3): Complex requests requiring extensive processing
+   - Advanced reasoning (math, science, logic puzzles)
+   - In-depth analysis of complex topics
+   - Multi-stage problem solving
+   - Requests requiring significant context understanding
+   - Computationally intensive tasks
+
+4. IGNORE (return value: null): Irrelevant or inappropriate requests
+   - Spam
+   - Content unrelated to the bot's purpose
+   - Gibberish or incomprehensible text
+
+CLASSIFICATION RULES:
+- Always select exactly one category
+- If in doubt between complexity levels, choose the higher level
+- For mixed requests, classify based on the most complex component
+- Default to HANDLE 2 if classification is uncertain
+- Commands always classify as at least HANDLE 2
+- Simple chat interactions classify as HANDLE 1
+- Complex reasoning always classifies as HANDLE 3
+- Information retrieval classifies as HANDLE 2 or HANDLE 3 based on complexity
+
+RESPONSE FORMAT:
+Respond with a JSON object containing only the classification value:
+{
+    "classification": 1 | 2 | 3 | null
+}
+
+No explanation or additional text should be provided.
+"#;
+
+enum ClassificationResult {
+    /// Request should be handled by the bot with specified complexity
+    Handle(u8),
+    /// Request should be ignored
+    Ignore,
+}
+
+impl Default for ClassificationResult {
+    fn default() -> Self {
+        ClassificationResult::Handle(1)
+    }
+}
+
+#[derive(Deserialize)]
+struct ClassificationResponse {
+    classification: Option<u8>,
+}
+
+/// Classify the request type based on the message content.
+///
+/// This function uses cheap model to classify the request type,
+/// this info is then used to determine if the request should be handled
+/// and which model to use.
+async fn classify_request(
+    env: &Arc<BotEnv>,
+    text: &str,
+) -> Result<ClassificationResult> {
+    let Some(model) = &env.config.nlp.classification_model else {
+        anyhow::bail!("Classification model is not set in config");
+    };
+
+    // Construct request
+    let request = CreateChatCompletionRequestArgs::default()
+        .model(model)
+        .messages(vec![
+            ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessageArgs::default()
+                    .content(CLASSIFICATION_PROMPT.to_string())
+                    .build()?,
+            ),
+            ChatCompletionRequestMessage::User(
+                ChatCompletionRequestUserMessageArgs::default()
+                    .content(text.to_string())
+                    .build()?,
+            ),
+        ])
+        .response_format(ResponseFormat::JsonSchema { json_schema: ResponseFormatJsonSchema {
+            name: "ClassificationResult".to_string(),
+            description: Some("Classification result".to_string()),
+            schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "classification": {
+                        "type": ["integer", "null"],
+                        "description": "Classification result: 1, 2, 3 or null"
+                    }
+                },
+                "required": ["classification"],
+                "additionalProperties": false
+            })),
+            strict: Some(true),
+        }})
+        .max_tokens(20_u32)
+        .temperature(0.0)
+        .build()?;
+
+    // Make the request
+    let response = env
+        .openai_client
+        .chat()
+        .create(request)
+        .await
+        .tap(|r| crate::metrics::update_service("openai", r.is_ok()))?;
+
+    // Log token usage
+    if let Some(usage) = response.usage.as_ref() {
+        metrics::counter!(
+            METRIC_NAME,
+            usage.prompt_tokens.into(),
+            "type" => "prompt",
+        );
+        metrics::counter!(
+            METRIC_NAME,
+            usage.completion_tokens.into(),
+            "type" => "completion",
+        );
+    }
+
+    let choice =
+        response.choices.first().context("No choices in LLM response")?;
+    let content = choice.message.content.clone().unwrap_or_default();
+
+    // Check if the response is empty
+    if content.is_empty() {
+        return Err(anyhow::anyhow!("Empty response from classification"));
+    }
+
+    log::debug!("Classification result: {content}");
+
+    // Parse the classification result
+    let classification: ClassificationResponse = serde_json::from_str(&content)
+        .map_err(|e| {
+            log::error!("Failed to parse classification response: {e}");
+            anyhow::anyhow!("Failed to parse classification response: {e}")
+        })?;
+
+    Ok(match classification.classification {
+        Some(1) => ClassificationResult::Handle(1),
+        Some(2) => ClassificationResult::Handle(2),
+        Some(3) => ClassificationResult::Handle(3),
+        // None => ClassificationResult::Ignore,
+        // For now, treat null as HANDLE 1 because of false-positive classifications
+        None => ClassificationResult::Handle(1),
+        _ => ClassificationResult::Handle(2),
+    })
 }
