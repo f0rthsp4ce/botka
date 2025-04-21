@@ -100,6 +100,11 @@ pub fn message_handler() -> UpdateHandler {
     dptree::filter_map(filter_nlp_messages).endpoint(handle_nlp_message)
 }
 
+pub fn random_message_handler() -> UpdateHandler {
+    dptree::filter_map_async(randomly_filter_nlp_messages)
+        .endpoint(handle_nlp_message)
+}
+
 #[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
 pub enum Commands {
@@ -260,6 +265,61 @@ fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
         let trigger_lower = trigger.to_lowercase();
         text_words.contains(&trigger_lower)
     }) {
+        return Some(msg);
+    }
+
+    None
+}
+
+async fn randomly_filter_nlp_messages(
+    env: Arc<BotEnv>,
+    msg: Message,
+) -> Option<Message> {
+    // Skip if NLP is disabled
+    if !env.config.nlp.enabled {
+        return None;
+    }
+
+    // Skip messages in passive mode
+    if env.config.telegram.passive_mode {
+        return None;
+    }
+
+    // Get random chance from config
+    let random_chance = env.config.nlp.random_answer_probability;
+    if random_chance == 0.0 {
+        return None;
+    }
+
+    // Roll the dice
+    let roll: f64 = rand::random_range(0.0..100.0);
+    if roll > random_chance {
+        // Skip if the roll is greater than the chance
+        return None;
+    }
+
+    // Skip messages without text or without caption
+    let text = msg.text().or_else(|| msg.caption())?;
+
+    // Skip if text starts with '--'
+    if text.starts_with("--") {
+        return None;
+    }
+
+    // Skip bot commands (those starting with '/')
+    if text.starts_with('/') {
+        return None;
+    }
+
+    // Classify with small model should we participate in the conversation
+    // or not
+    let text = msg.text().or_else(|| msg.caption())?;
+    let classification_result =
+        classify_random_request(&Arc::<BotEnv>::clone(&env), text)
+            .await
+            .unwrap_or(false);
+
+    if classification_result {
         return Some(msg);
     }
 
@@ -1746,4 +1806,151 @@ async fn classify_request(
         // None => ClassificationResult::Handle(1),
         _ => ClassificationResult::Handle(2),
     })
+}
+
+const RANDOM_CLASSIFICATION_PROMPT: &str = r#"You are a conversation intervention classifier that determines whether a bot should respond to a message in a group chat.
+
+PURPOSE:
+You analyze messages to decide if bot participation would add genuine value to the conversation. You run at random moments and should only trigger a response when truly necessary or valuable.
+
+DECISION CATEGORIES:
+1. RESPOND (return value: true): The bot should participate because:
+   - A topic where the bot's expertise would be genuinely valuable
+   - An information request that the bot can answer accurately
+   - A task request the bot can fulfill
+   - A discussion that would benefit from an objective perspective
+
+   Examples:
+   - "Can someone tell me how to reset the server?"
+   - "Does anyone know the code for the meeting room?"
+   - "I'm looking for recommendations on where to find this information"
+   - "What's the status of the project?"
+   - "I need help with this technical problem"
+
+2. DO NOT RESPOND (return value: false): The bot should remain silent because:
+   - Ongoing human conversation that doesn't need interruption
+   - Casual social chat or personal exchanges
+   - Topics outside the bot's expertise or purpose
+   - Rhetorical questions not requiring answers
+   - Messages that have already been adequately addressed
+   - Small talk or greetings between humans
+
+   Examples:
+   - "I'm heading to lunch, anyone want to join?"
+   - "That meeting was so boring!"
+   - "Just sharing some photos from the weekend"
+   - "Haha, that's funny"
+   - "See you all tomorrow!"
+   - "Thanks for handling that, Alex"
+
+CLASSIFICATION RULES:
+- Default position should be to NOT respond (false) unless clear value would be added
+- Only respond when the bot can provide unique, helpful information or assistance
+- Avoid interrupting flowing human conversations
+- Don't respond to conversational fragments or ambient chat
+- Don't respond to messages directed specifically at other individuals
+- Consider context - if a human is likely to answer, stay silent
+- If a message requires specialized knowledge the bot possesses, intervention is appropriate
+- Respond to explicit requests for information or assistance
+
+RESPONSE FORMAT:
+Respond with a JSON object containing only the decision value:
+{
+    "intervene": true | false
+}
+
+No explanation or additional text should be provided.
+"#;
+
+#[derive(Deserialize)]
+struct RandomClassificationResult {
+    intervene: bool,
+}
+
+async fn classify_random_request(
+    env: &Arc<BotEnv>,
+    text: &str,
+) -> Result<bool> {
+    let Some(model) = &env.config.nlp.classification_model else {
+        anyhow::bail!("Classification model is not set in config");
+    };
+
+    // Construct request
+    let request = CreateChatCompletionRequestArgs::default()
+        .model(model)
+        .messages(vec![
+            ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessageArgs::default()
+                    .content(RANDOM_CLASSIFICATION_PROMPT.to_string())
+                    .build()?,
+            ),
+            ChatCompletionRequestMessage::User(
+                ChatCompletionRequestUserMessageArgs::default()
+                    .content(text.to_string())
+                    .build()?,
+            ),
+        ])
+        .response_format(ResponseFormat::JsonSchema {
+            json_schema: ResponseFormatJsonSchema {
+                name: "ClassificationResult".to_string(),
+                description: Some("Classification result".to_string()),
+                schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "intervene": {
+                            "type": "boolean",
+                            "description": "Should the bot intervene?"
+                        }
+                    },
+                    "required": ["intervene"],
+                    "additionalProperties": false
+                })),
+                strict: Some(true),
+            },
+        })
+        .max_tokens(20_u32)
+        .temperature(0.0)
+        .build()?;
+
+    // Make the request
+    let response = env
+        .openai_client
+        .chat()
+        .create(request)
+        .await
+        .tap(|r| crate::metrics::update_service("openai", r.is_ok()))?;
+
+    // Log token usage
+    if let Some(usage) = response.usage.as_ref() {
+        metrics::counter!(
+            METRIC_NAME,
+            usage.prompt_tokens.into(),
+            "type" => "prompt",
+        );
+        metrics::counter!(
+            METRIC_NAME,
+            usage.completion_tokens.into(),
+            "type" => "completion",
+        );
+    }
+
+    let choice =
+        response.choices.first().context("No choices in LLM response")?;
+    let content = choice.message.content.clone().unwrap_or_default();
+
+    // Check if the response is empty
+    if content.is_empty() {
+        return Err(anyhow::anyhow!("Empty response from classification"));
+    }
+
+    log::debug!("Random classification result: {content}");
+
+    // Parse the classification result
+    let classification: RandomClassificationResult =
+        serde_json::from_str(&content).map_err(|e| {
+            log::error!("Failed to parse classification response: {e}");
+            anyhow::anyhow!("Failed to parse classification response: {e}")
+        })?;
+
+    Ok(classification.intervene)
 }
