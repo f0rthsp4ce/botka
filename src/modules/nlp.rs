@@ -373,8 +373,18 @@ fn split_long_message(text: &str, max_size: usize) -> Vec<String> {
             break;
         }
 
+        // Calculate safe maximum size that doesn't exceed max_size bytes
+        // and respects UTF-8 character boundaries
+        let safe_max = remaining
+            .char_indices()
+            .take_while(|(byte_idx, _)| *byte_idx <= max_size)
+            .last()
+            .map(|(byte_idx, c)| byte_idx + c.len_utf8())
+            .unwrap_or(0);
+
         // Try to find natural split points, starting from the most preferable
-        let mut chunk_end = max_size;
+        // but never exceeding our safe maximum
+        let mut chunk_end = safe_max;
 
         // Try to find a paragraph break (double newline)
         if let Some(pos) = remaining[..chunk_end].rfind("\n\n") {
@@ -382,7 +392,8 @@ fn split_long_message(text: &str, max_size: usize) -> Vec<String> {
         } else if let Some(pos) = remaining[..chunk_end].rfind('\n') {
             // Try to find a line break
             chunk_end = pos + 1;
-        } else if let Some(pos) = remaining[..chunk_end].rfind(['.', '!', '?'])
+        } else if let Some(pos) =
+            remaining[..chunk_end].rfind(|c| c == '.' || c == '!' || c == '?')
         {
             // Try to find a sentence end (including the punctuation)
             chunk_end = pos + 1;
@@ -390,7 +401,7 @@ fn split_long_message(text: &str, max_size: usize) -> Vec<String> {
             // Fall back to word boundary
             chunk_end = pos + 1;
         }
-        // If we couldn't find any natural break, we'll split at max_size
+        // If we couldn't find any natural break, we'll use the safe maximum which respects character boundaries
 
         result.push(remaining[..chunk_end].to_string());
         remaining = &remaining[chunk_end..];
