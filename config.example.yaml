@@ -141,10 +141,16 @@ nlp:
     - "botka"
     - "ботка"
     - "@your_bot_username"
-  # AI model to use for NLP processing (gpt-4.1 is recommended)
-  model: openai/gpt-4.1
+  # AI models. From dumbest to smartest. 3 required.
+  models:
+    - openai/gpt-4.1-nano
+    - openai/gpt-4.1-mini
+    - openai/gpt-4.1
+  # Model for search queries
   search_model: openai/gpt-4o-mini-search-preview
+  # Model for classification queries
+  classification_model: google/gemini-2.0-flash-lite-001
   # Maximum number of messages to include in history context
-  max_history: 100
+  max_history: 30
   # Default memory lifetime in hours (168 = 7 days)
   memory_limit: 168

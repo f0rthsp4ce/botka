@@ -225,7 +225,7 @@ pub struct NlpConfig {
 }
 
 const fn default_max_history() -> u16 {
-    100
+    30
 }
 
 const fn default_memory_limit() -> i64 {
@@ -246,7 +246,7 @@ fn default_search_model() -> String {
 
 #[allow(clippy::unnecessary_wraps)]
 fn default_classification_model() -> Option<String> {
-    Some("openai/gpt-4.1-nano".to_string())
+    Some("google/gemini-2.0-flash-lite-001".to_string())
 }
 
 #[cfg(test)]
