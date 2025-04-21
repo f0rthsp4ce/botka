@@ -830,14 +830,6 @@ async fn process_with_function_calling(
         anyhow::bail!("OpenAI integration is disabled in config");
     }
 
-    // Send typing action
-    let mut typing_builder =
-        bot.send_chat_action(msg.chat.id, ChatAction::Typing);
-    if let Some(thread_id) = msg.thread_id_ext() {
-        typing_builder = typing_builder.message_thread_id(thread_id);
-    }
-    typing_builder.await.log_error(module_path!(), "send_chat_action failed");
-
     // Define available tools (functions)
     let tools = get_chat_completion_tools();
 
@@ -1151,6 +1143,14 @@ async fn process_with_function_calling(
             )?
         }
     };
+
+    // Send typing action
+    let mut typing_builder =
+        bot.send_chat_action(msg.chat.id, ChatAction::Typing);
+    if let Some(thread_id) = msg.thread_id_ext() {
+        typing_builder = typing_builder.message_thread_id(thread_id);
+    }
+    typing_builder.await.log_error(module_path!(), "send_chat_action failed");
 
     // Start the function calling loop
     let mut current_messages = messages.clone();
