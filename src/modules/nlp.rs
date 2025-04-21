@@ -357,6 +357,48 @@ fn has_mentions_but_not_bot(msg: &Message, env: &Arc<BotEnv>) -> bool {
     has_mentions
 }
 
+/// Intelligently splits a message into chunks smaller than the maximum allowed size
+fn split_long_message(text: &str, max_size: usize) -> Vec<String> {
+    if text.len() <= max_size {
+        return vec![text.to_string()];
+    }
+
+    let mut result = Vec::new();
+    let mut remaining = text;
+
+    while !remaining.is_empty() {
+        if remaining.len() <= max_size {
+            // Add the remaining text as the last chunk
+            result.push(remaining.to_string());
+            break;
+        }
+
+        // Try to find natural split points, starting from the most preferable
+        let mut chunk_end = max_size;
+
+        // Try to find a paragraph break (double newline)
+        if let Some(pos) = remaining[..chunk_end].rfind("\n\n") {
+            chunk_end = pos + 2; // Include the newlines
+        } else if let Some(pos) = remaining[..chunk_end].rfind('\n') {
+            // Try to find a line break
+            chunk_end = pos + 1;
+        } else if let Some(pos) = remaining[..chunk_end].rfind(['.', '!', '?'])
+        {
+            // Try to find a sentence end (including the punctuation)
+            chunk_end = pos + 1;
+        } else if let Some(pos) = remaining[..chunk_end].rfind(' ') {
+            // Fall back to word boundary
+            chunk_end = pos + 1;
+        }
+        // If we couldn't find any natural break, we'll split at max_size
+
+        result.push(remaining[..chunk_end].to_string());
+        remaining = &remaining[chunk_end..];
+    }
+
+    result
+}
+
 /// Main handler for NLP messages
 async fn handle_nlp_message(
     bot: Bot,
@@ -384,17 +426,39 @@ async fn handle_nlp_message(
     // 4. Send the final response to the user or ignore
     match final_response {
         NlpResponse::Text(text) => {
-            let reply_builder = bot
-                .send_message(msg.chat.id, escape(&text))
-                .reply_to_message_id(msg.id)
-                .parse_mode(teloxide::types::ParseMode::Html)
-                .disable_web_page_preview(true);
+            // Split message if needed
+            let message_parts = split_long_message(&text, 2000);
 
-            let sent_msg = reply_builder.await?;
+            let mut first_sent_msg = None;
 
-            // 5. Store bot's response in chat history
-            store_bot_response(&env, &msg, &sent_msg, &text, &nlp_debug)
+            let mut reply_id = msg.id;
+            for (i, part) in message_parts.iter().enumerate() {
+                let reply_builder = bot
+                    .send_message(msg.chat.id, escape(part))
+                    .parse_mode(teloxide::types::ParseMode::Html)
+                    .disable_web_page_preview(true)
+                    .reply_to_message_id(reply_id);
+
+                let sent_msg = reply_builder.await?;
+
+                reply_id = sent_msg.id;
+
+                if i == 0 {
+                    first_sent_msg = Some(sent_msg);
+                }
+            }
+
+            // 5. Store bot's response in chat history (using first sent message as reference)
+            if let Some(first_sent_msg) = first_sent_msg {
+                store_bot_response(
+                    &env,
+                    &msg,
+                    &first_sent_msg,
+                    &text,
+                    &nlp_debug,
+                )
                 .context("Failed to store bot response in chat history")?;
+            }
         }
         NlpResponse::Ignore => {
             // Ignore the response and add to stored user message NLP debug info
@@ -1164,7 +1228,7 @@ async fn process_with_function_calling(
             .messages(current_messages.clone())
             .tools(tools.clone())
             .tool_choice(ChatCompletionToolChoiceOption::Auto)
-            .max_tokens(500_u32)
+            .max_tokens(2100_u32) // gemini works weird with values lower than 2048
             .temperature(0.6)
             .build()?;
 
