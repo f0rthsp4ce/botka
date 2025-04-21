@@ -1252,7 +1252,7 @@ async fn process_with_function_calling(
             .tools(tools.clone())
             .tool_choice(ChatCompletionToolChoiceOption::Auto)
             .max_tokens(2100_u32) // gemini works weird with values lower than 2048
-            .temperature(0.2)
+            .temperature(0.7)
             .build()?;
 
         // Make the request
