@@ -20,6 +20,8 @@ diesel::table! {
         from_user_id -> Nullable<BigInt>,
         timestamp -> Timestamp,
         message_text -> Text,
+        classification_result -> Nullable<Text>,
+        used_model -> Nullable<Text>,
     }
 }
 

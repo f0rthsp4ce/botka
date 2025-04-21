@@ -23,7 +23,11 @@
         };
 
         # Use rust-overlay to get the specific nightly toolchain
-        rustDev = pkgs.rust-bin.nightly.latest.default;
+        rustDev = pkgs.rust-bin.nightly.latest.default.override {
+          extensions = [
+            "rust-src"
+          ];
+        };
 
         # Define base runtime dependencies
         baseRuntimeDeps = [ pkgs.bash pkgs.imagemagick pkgs.sqlite ];

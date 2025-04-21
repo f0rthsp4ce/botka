@@ -244,6 +244,7 @@ fn default_search_model() -> String {
     "openai/gpt-4o-mini-search-preview".to_string()
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn default_classification_model() -> Option<String> {
     Some("openai/gpt-4.1-nano".to_string())
 }

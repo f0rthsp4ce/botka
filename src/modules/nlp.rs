@@ -27,14 +27,18 @@ use async_openai::types::{
 use chrono::{Duration, Local, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use log::debug;
+use macro_rules_attribute::derive;
 use serde::{Deserialize, Serialize};
 use tap::Tap;
 use teloxide::prelude::*;
 use teloxide::types::{ChatAction, Message, MessageEntityKind, ThreadId};
+use teloxide::utils::command::BotCommands;
 use teloxide::utils::html::escape;
 use tokio::sync::RwLock;
 
-use crate::common::{is_resident, BotEnv, UpdateHandler};
+use crate::common::{
+    filter_command, is_resident, BotCommandsExt, BotEnv, UpdateHandler,
+};
 use crate::db::{DbChatId, DbThreadId, DbUserId};
 use crate::models::{ChatHistoryEntry, Memory, NewChatHistoryEntry, NewMemory};
 use crate::modules::basic::cmd_status_text;
@@ -94,6 +98,104 @@ pub fn register_metrics() {
 /// Main message handler for natural language processing
 pub fn message_handler() -> UpdateHandler {
     dptree::filter_map(filter_nlp_messages).endpoint(handle_nlp_message)
+}
+
+#[derive(Clone, BotCommands, BotCommandsExt!)]
+#[command(rename_rule = "snake_case")]
+pub enum Commands {
+    #[command(description = "show racovina camera image.")]
+    #[custom(resident = true)]
+    NlpDebugInfo,
+}
+
+/// Command handler for natural language processing debugging
+pub fn command_handler() -> UpdateHandler {
+    filter_command::<Commands>().endpoint(handle_command)
+}
+
+async fn handle_command(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+    command: Commands,
+) -> Result<()> {
+    match command {
+        Commands::NlpDebugInfo => {
+            handle_nlp_debug_info(&bot, env, &msg)
+                .await
+                .context("Failed to handle NLP debug info")?;
+        }
+    }
+    Ok(())
+}
+
+async fn handle_nlp_debug_info(
+    bot: &Bot,
+    env: Arc<BotEnv>,
+    msg: &Message,
+) -> Result<()> {
+    // Get replied message info
+    let Some(replied_msg) = msg.reply_to_message() else {
+        bot.send_message(
+            msg.chat.id,
+            "Please reply to a message to get debug info.",
+        )
+        .reply_to_message_id(msg.id)
+        .send()
+        .await?;
+        return Ok(());
+    };
+
+    // Load message from database
+    let stored_message = {
+        match env.transaction(|conn| {
+            crate::schema::chat_history::table
+                .filter(
+                    crate::schema::chat_history::message_id
+                        .eq::<i32>(replied_msg.id.0),
+                )
+                .filter(
+                    crate::schema::chat_history::chat_id
+                        .eq(DbChatId::from(msg.chat.id)),
+                )
+                .first::<ChatHistoryEntry>(conn)
+        }) {
+            Ok(entry) => entry,
+            Err(diesel::result::Error::NotFound) => {
+                bot.send_message(msg.chat.id, "Message not found in database.")
+                    .reply_to_message_id(msg.id)
+                    .send()
+                    .await?;
+                return Ok(());
+            }
+            Err(e) => return Err(e.into()),
+        }
+    };
+
+    // Send debug info
+    let mut response = format!("Debug info for message {}:\n", replied_msg.id);
+    writeln!(
+        response,
+        "Classification result: {}",
+        stored_message.classification_result.map_or_else(
+            || "None".to_string(),
+            |classification| classification
+        )
+    )?;
+    writeln!(
+        response,
+        "Used model: {}",
+        stored_message
+            .used_model
+            .map_or_else(|| "None".to_string(), |model| model)
+    )?;
+
+    bot.send_message(msg.chat.id, response)
+        .reply_to_message_id(msg.id)
+        .send()
+        .await?;
+
+    Ok(())
 }
 
 /// Filter function to identify messages that should be processed with NLP
@@ -214,22 +316,51 @@ async fn handle_nlp_message(
     )?;
 
     // 3. Process with OpenAI using the proper function calling protocol
-    let final_response = process_with_function_calling(
+    let (final_response, nlp_debug) = process_with_function_calling(
         &bot, &env, &mac_state, &msg, &history, &memories,
     )
     .await?;
 
-    // 4. Send the final response to the user
-    let reply_builder = bot
-        .send_message(msg.chat.id, escape(&final_response))
-        .reply_to_message_id(msg.id)
-        .parse_mode(teloxide::types::ParseMode::Html)
-        .disable_web_page_preview(true);
+    // 4. Send the final response to the user or ignore
+    match final_response {
+        NlpResponse::Text(text) => {
+            let reply_builder = bot
+                .send_message(msg.chat.id, escape(&text))
+                .reply_to_message_id(msg.id)
+                .parse_mode(teloxide::types::ParseMode::Html)
+                .disable_web_page_preview(true);
 
-    let sent_msg = reply_builder.await?;
+            let sent_msg = reply_builder.await?;
 
-    // 5. Store bot's response in chat history
-    store_bot_response(&env, &msg, &sent_msg, &final_response)?;
+            // 5. Store bot's response in chat history
+            store_bot_response(&env, &msg, &sent_msg, &text, &nlp_debug)
+                .context("Failed to store bot response in chat history")?;
+        }
+        NlpResponse::Ignore => {
+            // Ignore the response and add to stored user message NLP debug info
+            env.transaction(|conn| {
+                diesel::update(crate::schema::chat_history::table)
+                    .filter(
+                        crate::schema::chat_history::message_id
+                            .eq::<i32>(msg.id.0),
+                    )
+                    .filter(
+                        crate::schema::chat_history::chat_id
+                            .eq(DbChatId::from(msg.chat.id)),
+                    )
+                    .set((
+                        crate::schema::chat_history::classification_result
+                            .eq(nlp_debug.classification_result.as_str()),
+                        crate::schema::chat_history::used_model
+                            .eq(nlp_debug.used_model.as_deref()),
+                    ))
+                    .execute(conn)
+            })
+            .ok();
+
+            return Ok(());
+        }
+    }
 
     Ok(())
 }
@@ -251,7 +382,6 @@ pub async fn store_message(env: Arc<BotEnv>, msg: Message) -> Result<()> {
     }
 
     let thread_id = msg.thread_id.unwrap_or(GENERAL_THREAD_ID);
-    let max_history = env.config.nlp.max_history;
 
     let new_entry = NewChatHistoryEntry {
         chat_id: msg.chat.id.into(),
@@ -260,6 +390,8 @@ pub async fn store_message(env: Arc<BotEnv>, msg: Message) -> Result<()> {
         from_user_id: msg.from.as_ref().map(|u| u.id.into()),
         timestamp: Utc::now().naive_utc(),
         message_text: msg.text().unwrap_or(""),
+        classification_result: None,
+        used_model: None,
     };
 
     env.transaction(|conn| {
@@ -268,42 +400,15 @@ pub async fn store_message(env: Arc<BotEnv>, msg: Message) -> Result<()> {
             .values(&new_entry)
             .execute(conn)?;
 
-        // Prune old messages to maintain limit
-        let count: i64 = crate::schema::chat_history::table
-            .filter(crate::schema::chat_history::chat_id.eq(new_entry.chat_id))
-            .filter(
-                crate::schema::chat_history::thread_id.eq(new_entry.thread_id),
-            )
-            .count()
-            .get_result(conn)?;
-
-        if count > i64::from(max_history) {
-            let excess = count - i64::from(max_history);
-
-            // Get IDs of oldest messages to delete
-            let to_delete: Vec<i32> = crate::schema::chat_history::table
-                .filter(
-                    crate::schema::chat_history::chat_id.eq(new_entry.chat_id),
-                )
-                .filter(
-                    crate::schema::chat_history::thread_id
-                        .eq(new_entry.thread_id),
-                )
-                .order(crate::schema::chat_history::timestamp.asc())
-                .limit(excess)
-                .select(crate::schema::chat_history::rowid)
-                .load(conn)?;
-
-            // Delete oldest messages
-            diesel::delete(crate::schema::chat_history::table)
-                .filter(crate::schema::chat_history::rowid.eq_any(to_delete))
-                .execute(conn)?;
-        }
-
         Ok(())
     })?;
 
     Ok(())
+}
+
+struct NlpDebug {
+    pub classification_result: ClassificationResult,
+    pub used_model: Option<String>,
 }
 
 /// Store bot's response in chat history
@@ -312,9 +417,11 @@ fn store_bot_response(
     original_msg: &Message,
     sent_msg: &Message,
     content: &str,
+    nlp_debug: &NlpDebug,
 ) -> Result<()> {
     let thread_id = original_msg.thread_id.unwrap_or(GENERAL_THREAD_ID);
 
+    let classification_str = nlp_debug.classification_result.as_str();
     let new_entry = NewChatHistoryEntry {
         chat_id: original_msg.chat.id.into(),
         thread_id: thread_id.into(),
@@ -322,6 +429,8 @@ fn store_bot_response(
         from_user_id: None, // From bot
         timestamp: Utc::now().naive_utc(),
         message_text: content,
+        classification_result: Some(&classification_str),
+        used_model: nlp_debug.used_model.as_deref(),
     };
 
     env.transaction(|conn| {
@@ -636,6 +745,11 @@ fn get_chat_completion_tools() -> Vec<ChatCompletionTool> {
     tools
 }
 
+enum NlpResponse {
+    Text(String),
+    Ignore,
+}
+
 /// Process message with LLM using the function calling protocol
 #[allow(clippy::too_many_lines)]
 async fn process_with_function_calling(
@@ -645,7 +759,7 @@ async fn process_with_function_calling(
     msg: &Message,
     history: &[ChatHistoryEntry],
     memories: &[Memory],
-) -> Result<String> {
+) -> Result<(NlpResponse, NlpDebug)> {
     if env.config.services.openai.disable {
         anyhow::bail!("OpenAI integration is disabled in config");
     }
@@ -947,12 +1061,19 @@ async fn process_with_function_calling(
 
     // Before sending the request classify it to determine appropriate model
     let classification =
-        classify_request(&env, &message_text).await.unwrap_or_default();
+        classify_request(env, &message_text).await.unwrap_or_default();
 
     // Choose the model based on the classification
-    let model = match classification {
+    let model = match &classification {
         ClassificationResult::Ignore => {
-            return Err(anyhow::anyhow!("Ignoring message: {message_text}"));
+            // Ignore the message and return
+            return Ok((
+                NlpResponse::Ignore,
+                NlpDebug {
+                    classification_result: classification,
+                    used_model: None,
+                },
+            ));
         }
         ClassificationResult::Handle(complexity) => {
             env.config.nlp.models.get((complexity - 1) as usize).ok_or_else(
@@ -1130,7 +1251,13 @@ async fn process_with_function_calling(
     }
 
     // Return the final response from the LLM
-    Ok(final_response)
+    Ok((
+        NlpResponse::Text(final_response),
+        NlpDebug {
+            classification_result: classification,
+            used_model: Some(model.to_string()),
+        },
+    ))
 }
 
 /// Handle `save_memory` function call
@@ -1463,6 +1590,7 @@ Respond with a JSON object containing only the classification value:
 No explanation or additional text should be provided.
 "#;
 
+#[allow(dead_code)]
 enum ClassificationResult {
     /// Request should be handled by the bot with specified complexity
     Handle(u8),
@@ -1470,9 +1598,18 @@ enum ClassificationResult {
     Ignore,
 }
 
+impl ClassificationResult {
+    fn as_str(&self) -> String {
+        match self {
+            Self::Handle(c) => format!("HANDLE {c}"),
+            Self::Ignore => "IGNORE".to_string(),
+        }
+    }
+}
+
 impl Default for ClassificationResult {
     fn default() -> Self {
-        ClassificationResult::Handle(1)
+        Self::Handle(1)
     }
 }
 
@@ -1573,9 +1710,9 @@ async fn classify_request(
         Some(1) => ClassificationResult::Handle(1),
         Some(2) => ClassificationResult::Handle(2),
         Some(3) => ClassificationResult::Handle(3),
-        // None => ClassificationResult::Ignore,
-        // For now, treat null as HANDLE 1 because of false-positive classifications
-        None => ClassificationResult::Handle(1),
+        None => ClassificationResult::Ignore,
+        // // For now, treat null as HANDLE 1 because of false-positive classifications
+        // None => ClassificationResult::Handle(1),
         _ => ClassificationResult::Handle(2),
     })
 }
