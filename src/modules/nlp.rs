@@ -1240,7 +1240,7 @@ async fn process_with_function_calling(
             .tools(tools.clone())
             .tool_choice(ChatCompletionToolChoiceOption::Auto)
             .max_tokens(2100_u32) // gemini works weird with values lower than 2048
-            .temperature(0.6)
+            .temperature(0.2)
             .build()?;
 
         // Make the request
@@ -1646,7 +1646,7 @@ async fn handle_search(env: &Arc<BotEnv>, query: &str) -> Result<String> {
             ),
         ])
         .max_tokens(1500_u32)
-        .temperature(0.6)
+        .temperature(0.2)
         .build()?;
 
     // Make the request
@@ -1835,7 +1835,7 @@ async fn classify_request(
             strict: Some(true),
         }})
         .max_tokens(20_u32)
-        .temperature(0.0)
+        .temperature(0.2)
         .build()?;
 
     // Make the request
@@ -1990,7 +1990,7 @@ async fn classify_random_request(
             },
         })
         .max_tokens(20_u32)
-        .temperature(0.0)
+        .temperature(0.2)
         .build()?;
 
     // Make the request
