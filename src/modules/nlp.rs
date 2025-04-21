@@ -1704,6 +1704,7 @@ CLASSIFICATION CATEGORIES:
    - "What can you help me with?"
    - "Thanks for your help"
    - "Okay got it"
+   - "Murr murr murr murr"
 
 2. HANDLE 2 (return value: 2): Standard requests requiring moderate processing
    - Commands or instructions (open door, add item)
@@ -1711,6 +1712,8 @@ CLASSIFICATION CATEGORIES:
    - API or service interactions
    - Multi-step but straightforward tasks
    - Uncertain classifications (default fallback)
+   - Unrelated to the bot's purpose but not spam
+   - Fun or casual interactions (jokes, memes)
 
    Examples:
    - "Who is in the space?"
@@ -1720,6 +1723,9 @@ CLASSIFICATION CATEGORIES:
    - "Why is breathing flux harmful?"
    - "How can I get into hackerspace?"
    - "How to become a resident?"
+   - "I need help with my homework"
+   - "Can you tell me a joke?"
+   - "How to poop?"
 
 3. HANDLE 3 (return value: 3): Complex requests requiring extensive processing
    - Advanced reasoning (math, science, logic puzzles)
