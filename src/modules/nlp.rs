@@ -314,8 +314,14 @@ async fn randomly_filter_nlp_messages(
     // Classify with small model should we participate in the conversation
     // or not
     let text = msg.text().or_else(|| msg.caption())?;
+
+    // Get chat history for context
+    let history =
+        get_chat_history(&env, msg.chat.id, msg.thread_id).unwrap_or_default();
+
+    // Classify with small model
     let classification_result =
-        classify_random_request(&Arc::<BotEnv>::clone(&env), text)
+        classify_random_request(&Arc::<BotEnv>::clone(&env), text, &history)
             .await
             .unwrap_or(false);
 
@@ -379,8 +385,7 @@ fn split_long_message(text: &str, max_size: usize) -> Vec<String> {
             .char_indices()
             .take_while(|(byte_idx, _)| *byte_idx <= max_size)
             .last()
-            .map(|(byte_idx, c)| byte_idx + c.len_utf8())
-            .unwrap_or(0);
+            .map_or(0, |(byte_idx, c)| byte_idx + c.len_utf8());
 
         // Try to find natural split points, starting from the most preferable
         // but never exceeding our safe maximum
@@ -392,8 +397,7 @@ fn split_long_message(text: &str, max_size: usize) -> Vec<String> {
         } else if let Some(pos) = remaining[..chunk_end].rfind('\n') {
             // Try to find a line break
             chunk_end = pos + 1;
-        } else if let Some(pos) =
-            remaining[..chunk_end].rfind(|c| c == '.' || c == '!' || c == '?')
+        } else if let Some(pos) = remaining[..chunk_end].rfind(['.', '!', '?'])
         {
             // Try to find a sentence end (including the punctuation)
             chunk_end = pos + 1;
@@ -1194,7 +1198,7 @@ async fn process_with_function_calling(
 
     // Before sending the request classify it to determine appropriate model
     let classification =
-        classify_request(env, &message_text).await.unwrap_or_default();
+        classify_request(env, &message_text, history).await.unwrap_or_default();
 
     // Choose the model based on the classification
     let model = match &classification {
@@ -1798,10 +1802,39 @@ struct ClassificationResponse {
 async fn classify_request(
     env: &Arc<BotEnv>,
     text: &str,
+    history: &[ChatHistoryEntry],
 ) -> Result<ClassificationResult> {
     let Some(model) = &env.config.nlp.classification_model else {
         anyhow::bail!("Classification model is not set in config");
     };
+
+    // Prepare context from history (up to 3 previous messages)
+    let context_messages = history
+        .iter()
+        .skip(1) // Skip the current message (it's the text parameter)
+        .take(3) // Take up to 3 previous messages
+        .rev() // Reverse back to chronological order
+        .map(|entry| {
+            let sender = if entry.from_user_id.is_none() {
+                "Bot".to_string()
+            } else {
+                "User".to_string()
+            };
+            format!("{}: {}", sender, entry.message_text)
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    // Build the full content with context and current message
+    let content = if context_messages.is_empty() {
+        text.to_string()
+    } else {
+        format!(
+            "Previous messages:\n{context_messages}\n\nCurrent message: {text}",
+        )
+    };
+
+    log::debug!("Classifying request: {content}");
 
     // Construct request
     let request = CreateChatCompletionRequestArgs::default()
@@ -1814,7 +1847,7 @@ async fn classify_request(
             ),
             ChatCompletionRequestMessage::User(
                 ChatCompletionRequestUserMessageArgs::default()
-                    .content(text.to_string())
+                    .content(content)
                     .build()?,
             ),
         ])
@@ -1951,10 +1984,39 @@ struct RandomClassificationResult {
 async fn classify_random_request(
     env: &Arc<BotEnv>,
     text: &str,
+    history: &[ChatHistoryEntry],
 ) -> Result<bool> {
     let Some(model) = &env.config.nlp.classification_model else {
         anyhow::bail!("Classification model is not set in config");
     };
+
+    // Prepare context from history (up to 3 previous messages)
+    let context_messages = history
+        .iter()
+        .skip(1) // Skip the current message
+        .take(3) // Take up to 3 previous messages
+        .rev() // Reverse back to chronological order
+        .map(|entry| {
+            let sender = if entry.from_user_id.is_none() {
+                "Bot".to_string()
+            } else {
+                "User".to_string()
+            };
+            format!("{}: {}", sender, entry.message_text)
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    // Build the full content with context and current message
+    let content = if context_messages.is_empty() {
+        text.to_string()
+    } else {
+        format!(
+            "Previous messages:\n{context_messages}\n\nCurrent message: {text}",
+        )
+    };
+
+    log::debug!("Random classification request: {content}");
 
     // Construct request
     let request = CreateChatCompletionRequestArgs::default()
@@ -1967,7 +2029,7 @@ async fn classify_random_request(
             ),
             ChatCompletionRequestMessage::User(
                 ChatCompletionRequestUserMessageArgs::default()
-                    .content(text.to_string())
+                    .content(content)
                     .build()?,
             ),
         ])
