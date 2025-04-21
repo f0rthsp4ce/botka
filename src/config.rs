@@ -222,6 +222,8 @@ pub struct NlpConfig {
     pub max_history: u16,
     #[serde(default = "default_memory_limit")]
     pub memory_limit: i64,
+    #[serde(default = "default_random_answer_probability")]
+    pub random_answer_probability: f64,
 }
 
 const fn default_max_history() -> u16 {
@@ -247,6 +249,10 @@ fn default_search_model() -> String {
 #[allow(clippy::unnecessary_wraps)]
 fn default_classification_model() -> Option<String> {
     Some("google/gemini-2.0-flash-lite-001".to_string())
+}
+
+const fn default_random_answer_probability() -> f64 {
+    3.33 // one in 30
 }
 
 #[cfg(test)]

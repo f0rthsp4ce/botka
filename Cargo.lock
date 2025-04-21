@@ -839,6 +839,7 @@ dependencies = [
  "nom",
  "passwords",
  "pretty_env_logger",
+ "rand 0.9.1",
  "regex",
  "reqwest 0.12.15",
  "salvo",
