@@ -1552,12 +1552,29 @@ CLASSIFICATION CATEGORIES:
    - Simple status inquiries (how are you, what can you do)
    - Basic acknowledgments (thanks, okay)
 
+   Examples:
+   - "Hello there"
+   - "Hi bot"
+   - "How are you doing today?"
+   - "What can you help me with?"
+   - "Thanks for your help"
+   - "Okay got it"
+
 2. HANDLE 2 (return value: 2): Standard requests requiring moderate processing
    - Commands or instructions (open door, add item)
    - Information retrieval tasks
    - API or service interactions
    - Multi-step but straightforward tasks
    - Uncertain classifications (default fallback)
+
+   Examples:
+   - "Who is in the space?"
+   - "Open the door"
+   - "Add milk to the shopping list"
+   - "Give me full shopping list"
+   - "Why is breathing flux harmful?"
+   - "How can I get into hackerspace?"
+   - "How to become a resident?"
 
 3. HANDLE 3 (return value: 3): Complex requests requiring extensive processing
    - Advanced reasoning (math, science, logic puzzles)
@@ -1566,10 +1583,24 @@ CLASSIFICATION CATEGORIES:
    - Requests requiring significant context understanding
    - Computationally intensive tasks
 
+   Examples:
+   - "Calculate the optimal trajectory for a satellite orbiting Earth considering gravitational influences from the Moon"
+   - "Analyze the economic implications of implementing a universal basic income in a developing economy"
+   - "Solve this system of differential equations and explain the physical significance of the solution"
+   - "Compare and contrast five machine learning approaches for natural language understanding and recommend the best one for my specialized application"
+   - "Design an efficient algorithm to solve the traveling salesman problem for 100 cities"
+
 4. IGNORE (return value: null): Irrelevant or inappropriate requests
    - Spam
    - Content unrelated to the bot's purpose
    - Gibberish or incomprehensible text
+
+   Examples:
+   - "asfdasfasdf324234"
+   - "CHEAP VIAGRA BUY NOW!!!"
+   - "∞◊≈∆˚∆ßßø˜˜ˆ"
+   - "this message is for a completely different bot system and has nothing to do with your purpose"
+   - "[random sequence of unrelated emojis]"
 
 CLASSIFICATION RULES:
 - Always select exactly one category
