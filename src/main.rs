@@ -203,6 +203,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::camera::command_handler())
                     .branch(modules::ldap::command_handler())
                     .branch(modules::butler::command_handler())
+                    .branch(modules::nlp::command_handler())
                     .inspect_err(modules::nlp::store_message)
                     .branch(modules::nlp::message_handler())
                     .endpoint(drop_endpoint),

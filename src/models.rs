@@ -201,6 +201,8 @@ pub struct ChatHistoryEntry {
     pub from_user_id: Option<DbUserId>,
     pub timestamp: chrono::NaiveDateTime,
     pub message_text: String,
+    pub classification_result: Option<String>,
+    pub used_model: Option<String>,
 }
 
 #[derive(Clone, Debug, Insertable)]
@@ -212,6 +214,8 @@ pub struct NewChatHistoryEntry<'a> {
     pub from_user_id: Option<DbUserId>,
     pub timestamp: chrono::NaiveDateTime,
     pub message_text: &'a str,
+    pub classification_result: Option<&'a str>,
+    pub used_model: Option<&'a str>,
 }
 
 // Database option models

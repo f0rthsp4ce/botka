@@ -23,10 +23,10 @@
         };
 
         # Use rust-overlay to get the specific nightly toolchain
-        rustDev = pkgs.rust-bin.nightly."2025-04-15".default.override {
-          # rust-src is required for rust-analyzer
-          extensions = [ "rust-src" ];
-          # targets = [ ]; # Add specific targets if needed
+        rustDev = pkgs.rust-bin.nightly.latest.default.override {
+          extensions = [
+            "rust-src"
+          ];
         };
 
         # Define base runtime dependencies
