@@ -11,29 +11,38 @@ use teloxide::types::Message;
 use teloxide::utils::command::BotCommands;
 use tokio::sync::RwLock;
 
-use crate::common::{filter_command, is_resident, BotEnv, UpdateHandler, BotCommandsExt};
+use crate::common::{
+    filter_command, is_resident, BotCommandsExt, BotEnv, UpdateHandler,
+};
 use crate::db::DbChatId;
 use crate::models::ChatHistoryEntry;
 use crate::modules::basic::cmd_status_text;
-use crate::modules::butler;
-use crate::modules::mac_monitoring;
 use crate::modules::needs::{add_items_text, command_needs_text};
 use crate::modules::nlp::types::ExecuteCommandArgs;
+use crate::modules::{butler, mac_monitoring};
 
 /// Commands for natural language processing
 #[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
 pub enum Commands {
     #[command(description = "show NLP debug info.")]
-    #[custom(resident = false, admin = false, in_private = true, in_group = true, in_resident_chat = false)]
+    #[custom(
+        resident = false,
+        admin = false,
+        in_private = true,
+        in_group = true,
+        in_resident_chat = false
+    )]
     NlpDebugInfo,
 }
 
 /// Command handler for natural language processing debugging
 pub fn command_handler() -> UpdateHandler {
-    filter_command::<Commands>().endpoint(|bot: Bot, env: Arc<BotEnv>, msg: Message, cmd: Commands| async move {
-        handle_command(bot, env, msg, cmd).await
-    })
+    filter_command::<Commands>().endpoint(
+        |bot: Bot, env: Arc<BotEnv>, msg: Message, cmd: Commands| async move {
+            handle_command(bot, env, msg, cmd).await
+        },
+    )
 }
 
 /// Main command handler

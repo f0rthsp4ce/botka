@@ -6,25 +6,35 @@ use teloxide::prelude::*;
 use teloxide::types::{Message, MessageEntityKind};
 use tokio::sync::RwLock;
 
+use super::classification::classify_random_request;
+use super::memory::get_chat_history;
 use crate::common::{BotEnv, UpdateHandler};
 use crate::modules::mac_monitoring;
 
-use super::memory::get_chat_history;
-use super::classification::classify_random_request;
-
 /// Main message handler for natural language processing
 pub fn message_handler() -> UpdateHandler {
-    dptree::filter_map(filter_nlp_messages).endpoint(|bot: Bot, env: Arc<BotEnv>, mac_state: Arc<RwLock<mac_monitoring::State>>, msg: Message| async move {
-        super::processing::handle_nlp_message(bot, env, mac_state, msg).await
-    })
+    dptree::filter_map(filter_nlp_messages).endpoint(
+        |bot: Bot,
+         env: Arc<BotEnv>,
+         mac_state: Arc<RwLock<mac_monitoring::State>>,
+         msg: Message| async move {
+            super::processing::handle_nlp_message(bot, env, mac_state, msg)
+                .await
+        },
+    )
 }
 
 /// Random message handler for casual interventions
 pub fn random_message_handler() -> UpdateHandler {
-    dptree::filter_map_async(randomly_filter_nlp_messages)
-        .endpoint(|bot: Bot, env: Arc<BotEnv>, mac_state: Arc<RwLock<mac_monitoring::State>>, msg: Message| async move {
-            super::processing::handle_nlp_message(bot, env, mac_state, msg).await
-        })
+    dptree::filter_map_async(randomly_filter_nlp_messages).endpoint(
+        |bot: Bot,
+         env: Arc<BotEnv>,
+         mac_state: Arc<RwLock<mac_monitoring::State>>,
+         msg: Message| async move {
+            super::processing::handle_nlp_message(bot, env, mac_state, msg)
+                .await
+        },
+    )
 }
 
 /// Filter function to identify messages that should be processed with NLP

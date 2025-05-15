@@ -7,10 +7,13 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 use async_openai::types::{
     ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
-    ChatCompletionRequestMessageContentPartImage, ChatCompletionRequestMessageContentPartText,
-    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
-    ChatCompletionRequestUserMessageContent, ChatCompletionRequestUserMessageContentPart,
-    ChatCompletionTool, ChatCompletionToolChoiceOption, ChatCompletionToolType,
+    ChatCompletionRequestMessageContentPartImage,
+    ChatCompletionRequestMessageContentPartText,
+    ChatCompletionRequestSystemMessageArgs,
+    ChatCompletionRequestUserMessageArgs,
+    ChatCompletionRequestUserMessageContent,
+    ChatCompletionRequestUserMessageContentPart, ChatCompletionTool,
+    ChatCompletionToolChoiceOption, ChatCompletionToolType,
     CreateChatCompletionRequestArgs, FunctionObject, ImageDetail, ImageUrl,
 };
 use chrono::{Local, Utc};
@@ -26,11 +29,19 @@ use crate::common::BotEnv;
 use crate::db::DbUserId;
 use crate::models::{ChatHistoryEntry, Memory};
 use crate::modules::mac_monitoring;
+use crate::modules::nlp::classification::{
+    classify_request, ClassificationResult,
+};
 use crate::modules::nlp::commands::handle_execute_command;
-use crate::modules::nlp::memory::{get_chat_history, get_relevant_memories, handle_remove_memory, handle_save_memory, store_bot_response};
-use crate::modules::nlp::types::{ExecuteCommandArgs, NlpDebug, NlpResponse, RemoveMemoryArgs, SearchArgs, METRIC_NAME};
+use crate::modules::nlp::memory::{
+    get_chat_history, get_relevant_memories, handle_remove_memory,
+    handle_save_memory, store_bot_response,
+};
+use crate::modules::nlp::types::{
+    ExecuteCommandArgs, NlpDebug, NlpResponse, RemoveMemoryArgs, SearchArgs,
+    METRIC_NAME,
+};
 use crate::modules::nlp::utils::split_long_message;
-use crate::modules::nlp::classification::{classify_request, ClassificationResult};
 use crate::utils::{MessageExt, ResultExt};
 
 /// Prompt for the main chat interaction
@@ -954,3 +965,4 @@ pub async fn handle_search(env: &Arc<BotEnv>, query: &str) -> Result<String> {
     // Return the search result
     Ok(content)
 }
+

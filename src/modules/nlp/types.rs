@@ -44,7 +44,8 @@ pub enum NlpResponse {
 
 /// Debug information about NLP processing
 pub struct NlpDebug {
-    pub classification_result: crate::modules::nlp::classification::ClassificationResult,
+    pub classification_result:
+        crate::modules::nlp::classification::ClassificationResult,
     pub used_model: Option<String>,
 }
 

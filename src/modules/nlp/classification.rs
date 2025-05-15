@@ -12,7 +12,9 @@ use tap::Tap;
 
 use crate::common::BotEnv;
 use crate::models::ChatHistoryEntry;
-use crate::modules::nlp::types::{ClassificationResponse, RandomClassificationResult, METRIC_NAME};
+use crate::modules::nlp::types::{
+    ClassificationResponse, RandomClassificationResult, METRIC_NAME,
+};
 
 /// Prompt for message classification
 const CLASSIFICATION_PROMPT: &str = r#"You are a precise classification assistant that categorizes user requests.
