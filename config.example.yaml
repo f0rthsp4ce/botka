@@ -154,3 +154,5 @@ nlp:
   max_history: 30
   # Default memory lifetime in hours (168 = 7 days)
   memory_limit: 168
+  # Random answer probability (set to 0 to disable, value from 0 to 100%)
+  random_answer_probability: 3.33  # once per 30 messages

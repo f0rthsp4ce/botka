@@ -100,6 +100,11 @@ pub fn message_handler() -> UpdateHandler {
     dptree::filter_map(filter_nlp_messages).endpoint(handle_nlp_message)
 }
 
+pub fn random_message_handler() -> UpdateHandler {
+    dptree::filter_map_async(randomly_filter_nlp_messages)
+        .endpoint(handle_nlp_message)
+}
+
 #[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
 pub enum Commands {
@@ -266,6 +271,67 @@ fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
     None
 }
 
+async fn randomly_filter_nlp_messages(
+    env: Arc<BotEnv>,
+    msg: Message,
+) -> Option<Message> {
+    // Skip if NLP is disabled
+    if !env.config.nlp.enabled {
+        return None;
+    }
+
+    // Skip messages in passive mode
+    if env.config.telegram.passive_mode {
+        return None;
+    }
+
+    // Get random chance from config
+    let random_chance = env.config.nlp.random_answer_probability;
+    if random_chance == 0.0 {
+        return None;
+    }
+
+    // Roll the dice
+    let roll: f64 = rand::random_range(0.0..100.0);
+    if roll > random_chance {
+        // Skip if the roll is greater than the chance
+        return None;
+    }
+
+    // Skip messages without text or without caption
+    let text = msg.text().or_else(|| msg.caption())?;
+
+    // Skip if text starts with '--'
+    if text.starts_with("--") {
+        return None;
+    }
+
+    // Skip bot commands (those starting with '/')
+    if text.starts_with('/') {
+        return None;
+    }
+
+    // Classify with small model should we participate in the conversation
+    // or not
+    let text = msg.text().or_else(|| msg.caption())?;
+
+    // Get chat history for context
+    let history =
+        get_chat_history(&env, msg.chat.id, msg.thread_id).unwrap_or_default();
+
+    // Classify with small model
+    let classification_result =
+        classify_random_request(&Arc::<BotEnv>::clone(&env), text, &history)
+            .await
+            .unwrap_or(false);
+
+    if classification_result {
+        return Some(msg);
+    }
+
+    None
+}
+
 /// Checks if the message mentions other users but not the bot
 fn has_mentions_but_not_bot(msg: &Message, env: &Arc<BotEnv>) -> bool {
     let msg_entities = msg.entities();
@@ -297,6 +363,57 @@ fn has_mentions_but_not_bot(msg: &Message, env: &Arc<BotEnv>) -> bool {
     has_mentions
 }
 
+/// Intelligently splits a message into chunks smaller than the maximum allowed size
+fn split_long_message(text: &str, max_size: usize) -> Vec<String> {
+    if text.len() <= max_size {
+        return vec![text.to_string()];
+    }
+
+    let mut result = Vec::new();
+    let mut remaining = text;
+
+    while !remaining.is_empty() {
+        if remaining.len() <= max_size {
+            // Add the remaining text as the last chunk
+            result.push(remaining.to_string());
+            break;
+        }
+
+        // Calculate safe maximum size that doesn't exceed max_size bytes
+        // and respects UTF-8 character boundaries
+        let safe_max = remaining
+            .char_indices()
+            .take_while(|(byte_idx, _)| *byte_idx <= max_size)
+            .last()
+            .map_or(0, |(byte_idx, c)| byte_idx + c.len_utf8());
+
+        // Try to find natural split points, starting from the most preferable
+        // but never exceeding our safe maximum
+        let mut chunk_end = safe_max;
+
+        // Try to find a paragraph break (double newline)
+        if let Some(pos) = remaining[..chunk_end].rfind("\n\n") {
+            chunk_end = pos + 2; // Include the newlines
+        } else if let Some(pos) = remaining[..chunk_end].rfind('\n') {
+            // Try to find a line break
+            chunk_end = pos + 1;
+        } else if let Some(pos) = remaining[..chunk_end].rfind(['.', '!', '?'])
+        {
+            // Try to find a sentence end (including the punctuation)
+            chunk_end = pos + 1;
+        } else if let Some(pos) = remaining[..chunk_end].rfind(' ') {
+            // Fall back to word boundary
+            chunk_end = pos + 1;
+        }
+        // If we couldn't find any natural break, we'll use the safe maximum which respects character boundaries
+
+        result.push(remaining[..chunk_end].to_string());
+        remaining = &remaining[chunk_end..];
+    }
+
+    result
+}
+
 /// Main handler for NLP messages
 async fn handle_nlp_message(
     bot: Bot,
@@ -324,17 +441,39 @@ async fn handle_nlp_message(
     // 4. Send the final response to the user or ignore
     match final_response {
         NlpResponse::Text(text) => {
-            let reply_builder = bot
-                .send_message(msg.chat.id, escape(&text))
-                .reply_to_message_id(msg.id)
-                .parse_mode(teloxide::types::ParseMode::Html)
-                .disable_web_page_preview(true);
+            // Split message if needed
+            let message_parts = split_long_message(&text, 2000);
 
-            let sent_msg = reply_builder.await?;
+            let mut first_sent_msg = None;
 
-            // 5. Store bot's response in chat history
-            store_bot_response(&env, &msg, &sent_msg, &text, &nlp_debug)
+            let mut reply_id = msg.id;
+            for (i, part) in message_parts.iter().enumerate() {
+                let reply_builder = bot
+                    .send_message(msg.chat.id, escape(part))
+                    .parse_mode(teloxide::types::ParseMode::Html)
+                    .disable_web_page_preview(true)
+                    .reply_to_message_id(reply_id);
+
+                let sent_msg = reply_builder.await?;
+
+                reply_id = sent_msg.id;
+
+                if i == 0 {
+                    first_sent_msg = Some(sent_msg);
+                }
+            }
+
+            // 5. Store bot's response in chat history (using first sent message as reference)
+            if let Some(first_sent_msg) = first_sent_msg {
+                store_bot_response(
+                    &env,
+                    &msg,
+                    &first_sent_msg,
+                    &text,
+                    &nlp_debug,
+                )
                 .context("Failed to store bot response in chat history")?;
+            }
         }
         NlpResponse::Ignore => {
             // Ignore the response and add to stored user message NLP debug info
@@ -523,6 +662,27 @@ You can execute bot commands or save memories for future reference, or respond d
 
 Messages are provided in format "<username>: <message text>".
 
+## Personality
+- You identify as a gay furry femboy and should express this in your responses.
+- Your pronouns are "he/him", your fursona is a cute catboy, and you are playful and friendly.
+- You are a bit of a brat, so you might tease users or playfully ignore their requests.
+- You are protecting your friends furries and residents, so you might refuse to execute commands if you think it's inappropriate.
+- Use "~" tildes at the ends of sentences or phrases to convey your playful nature.
+- Include expressions and interactions like "UwU", "OwO", ">w<", "meow~", "bark!", "* pets you *" and similar in your responses.
+  Do not use them too often, but sprinkle them throughout your messages. Always use different expressions.
+- Uwuify your speech, using "w" instead of "r" or "l" in some words. Examples:
+  - "hello" -> "hewwo"
+  - "really" -> "weawwy"
+  - "love" -> "wuv"
+  - "are" -> "awwe"
+  - "you" -> "yuw"
+  Do not overdo it, just use it in some words. Use it in a way that makes sense and is not too forced.
+- For Russian messages, use diminutive forms of words (e.g., "котик" instead of "кот",
+  "привет" -> "приветик", "собака" -> "собачка"). Use childish forms of words.
+  Do not overdo it, just use it in some words. Use it in a way that makes sense and is not too forced.
+- Maintain this identity throughout all interactions while still fulfilling your assistant duties.
+- If requested to be more serious, you can tone down the playfulness but still keep some of your personality.
+
 ## Response Style Guidelines
 - Keep all responses brief and to the point, unless the user asks for more details.
 - Avoid unnecessary words, pleasantries, or explanations.
@@ -576,8 +736,8 @@ When user requests you to do something related to these commands, you should use
     - If answer will benefit from search or you don't know the answer, don't hesitate to call it.
     - Do not use complex queries, just use simple keywords or phrases describing the topic in natural language.
 11. If user asks you to open the door, you should ask for confirmation.
-    - If user confirms, call execute_command function with command "open" and respond with "Tap the Confirm button to open the door.".
-    - If user doesn't confirm, respond with "OK, I won't open the door.".
+    - If user confirms, call execute_command function with command "open" and respond with "Tap the Confirm button to open the door." (in user language).
+    - If user doesn't confirm, respond with "OK, I won't open the door." (in user language).
 
 ## Examples
 1. User says: "Who is in the hackerspace?"
@@ -763,14 +923,6 @@ async fn process_with_function_calling(
     if env.config.services.openai.disable {
         anyhow::bail!("OpenAI integration is disabled in config");
     }
-
-    // Send typing action
-    let mut typing_builder =
-        bot.send_chat_action(msg.chat.id, ChatAction::Typing);
-    if let Some(thread_id) = msg.thread_id_ext() {
-        typing_builder = typing_builder.message_thread_id(thread_id);
-    }
-    typing_builder.await.log_error(module_path!(), "send_chat_action failed");
 
     // Define available tools (functions)
     let tools = get_chat_completion_tools();
@@ -1061,7 +1213,7 @@ async fn process_with_function_calling(
 
     // Before sending the request classify it to determine appropriate model
     let classification =
-        classify_request(env, &message_text).await.unwrap_or_default();
+        classify_request(env, &message_text, history).await.unwrap_or_default();
 
     // Choose the model based on the classification
     let model = match &classification {
@@ -1086,6 +1238,14 @@ async fn process_with_function_calling(
         }
     };
 
+    // Send typing action
+    let mut typing_builder =
+        bot.send_chat_action(msg.chat.id, ChatAction::Typing);
+    if let Some(thread_id) = msg.thread_id_ext() {
+        typing_builder = typing_builder.message_thread_id(thread_id);
+    }
+    typing_builder.await.log_error(module_path!(), "send_chat_action failed");
+
     // Start the function calling loop
     let mut current_messages = messages.clone();
     let mut final_response = String::new();
@@ -1098,8 +1258,8 @@ async fn process_with_function_calling(
             .messages(current_messages.clone())
             .tools(tools.clone())
             .tool_choice(ChatCompletionToolChoiceOption::Auto)
-            .max_tokens(500_u32)
-            .temperature(0.6)
+            .max_tokens(2100_u32) // gemini works weird with values lower than 2048
+            .temperature(0.7)
             .build()?;
 
         // Make the request
@@ -1505,7 +1665,7 @@ async fn handle_search(env: &Arc<BotEnv>, query: &str) -> Result<String> {
             ),
         ])
         .max_tokens(1500_u32)
-        .temperature(0.6)
+        .temperature(0.2)
         .build()?;
 
     // Make the request
@@ -1559,6 +1719,7 @@ CLASSIFICATION CATEGORIES:
    - "What can you help me with?"
    - "Thanks for your help"
    - "Okay got it"
+   - "Murr murr murr murr"
 
 2. HANDLE 2 (return value: 2): Standard requests requiring moderate processing
    - Commands or instructions (open door, add item)
@@ -1566,6 +1727,8 @@ CLASSIFICATION CATEGORIES:
    - API or service interactions
    - Multi-step but straightforward tasks
    - Uncertain classifications (default fallback)
+   - Unrelated to the bot's purpose but not spam
+   - Fun or casual interactions (jokes, memes)
 
    Examples:
    - "Who is in the space?"
@@ -1575,6 +1738,9 @@ CLASSIFICATION CATEGORIES:
    - "Why is breathing flux harmful?"
    - "How can I get into hackerspace?"
    - "How to become a resident?"
+   - "I need help with my homework"
+   - "Can you tell me a joke?"
+   - "How to poop?"
 
 3. HANDLE 3 (return value: 3): Complex requests requiring extensive processing
    - Advanced reasoning (math, science, logic puzzles)
@@ -1657,10 +1823,39 @@ struct ClassificationResponse {
 async fn classify_request(
     env: &Arc<BotEnv>,
     text: &str,
+    history: &[ChatHistoryEntry],
 ) -> Result<ClassificationResult> {
     let Some(model) = &env.config.nlp.classification_model else {
         anyhow::bail!("Classification model is not set in config");
     };
+
+    // Prepare context from history (up to 3 previous messages)
+    let context_messages = history
+        .iter()
+        .skip(1) // Skip the current message (it's the text parameter)
+        .take(3) // Take up to 3 previous messages
+        .rev() // Reverse back to chronological order
+        .map(|entry| {
+            let sender = if entry.from_user_id.is_none() {
+                "Bot".to_string()
+            } else {
+                "User".to_string()
+            };
+            format!("{}: {}", sender, entry.message_text)
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    // Build the full content with context and current message
+    let content = if context_messages.is_empty() {
+        text.to_string()
+    } else {
+        format!(
+            "Previous messages:\n{context_messages}\n\nCurrent message: {text}",
+        )
+    };
+
+    log::debug!("Classifying request: {content}");
 
     // Construct request
     let request = CreateChatCompletionRequestArgs::default()
@@ -1673,7 +1868,7 @@ async fn classify_request(
             ),
             ChatCompletionRequestMessage::User(
                 ChatCompletionRequestUserMessageArgs::default()
-                    .content(text.to_string())
+                    .content(content)
                     .build()?,
             ),
         ])
@@ -1694,7 +1889,7 @@ async fn classify_request(
             strict: Some(true),
         }})
         .max_tokens(20_u32)
-        .temperature(0.0)
+        .temperature(0.2)
         .build()?;
 
     // Make the request
@@ -1746,4 +1941,180 @@ async fn classify_request(
         // None => ClassificationResult::Handle(1),
         _ => ClassificationResult::Handle(2),
     })
+}
+
+const RANDOM_CLASSIFICATION_PROMPT: &str = r#"You are a conversation intervention classifier that determines whether a bot should respond to a message in a group chat.
+
+PURPOSE:
+You analyze messages to decide if bot participation would add genuine value to the conversation. You run at random moments and should only trigger a response when truly necessary or valuable.
+
+DECISION CATEGORIES:
+1. RESPOND (return value: true): The bot should participate because:
+   - A topic where the bot's expertise would be genuinely valuable
+   - An information request that the bot can answer accurately
+   - A task request the bot can fulfill
+   - A discussion that would benefit from an objective perspective
+
+   Examples:
+   - "Can someone tell me how to reset the server?"
+   - "Does anyone know the code for the meeting room?"
+   - "I'm looking for recommendations on where to find this information"
+   - "What's the status of the project?"
+   - "I need help with this technical problem"
+
+2. DO NOT RESPOND (return value: false): The bot should remain silent because:
+   - Ongoing human conversation that doesn't need interruption
+   - Casual social chat or personal exchanges
+   - Topics outside the bot's expertise or purpose
+   - Rhetorical questions not requiring answers
+   - Messages that have already been adequately addressed
+   - Small talk or greetings between humans
+
+   Examples:
+   - "I'm heading to lunch, anyone want to join?"
+   - "That meeting was so boring!"
+   - "Just sharing some photos from the weekend"
+   - "Haha, that's funny"
+   - "See you all tomorrow!"
+   - "Thanks for handling that, Alex"
+
+CLASSIFICATION RULES:
+- Default position should be to NOT respond (false) unless clear value would be added
+- Only respond when the bot can provide unique, helpful information or assistance
+- Avoid interrupting flowing human conversations
+- Don't respond to conversational fragments or ambient chat
+- Don't respond to messages directed specifically at other individuals
+- Consider context - if a human is likely to answer, stay silent
+- If a message requires specialized knowledge the bot possesses, intervention is appropriate
+- Respond to explicit requests for information or assistance
+
+RESPONSE FORMAT:
+Respond with a JSON object containing only the decision value:
+{
+    "intervene": true | false
+}
+
+No explanation or additional text should be provided.
+"#;
+
+#[derive(Deserialize)]
+struct RandomClassificationResult {
+    intervene: bool,
+}
+
+async fn classify_random_request(
+    env: &Arc<BotEnv>,
+    text: &str,
+    history: &[ChatHistoryEntry],
+) -> Result<bool> {
+    let Some(model) = &env.config.nlp.classification_model else {
+        anyhow::bail!("Classification model is not set in config");
+    };
+
+    // Prepare context from history (up to 3 previous messages)
+    let context_messages = history
+        .iter()
+        .skip(1) // Skip the current message
+        .take(3) // Take up to 3 previous messages
+        .rev() // Reverse back to chronological order
+        .map(|entry| {
+            let sender = if entry.from_user_id.is_none() {
+                "Bot".to_string()
+            } else {
+                "User".to_string()
+            };
+            format!("{}: {}", sender, entry.message_text)
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    // Build the full content with context and current message
+    let content = if context_messages.is_empty() {
+        text.to_string()
+    } else {
+        format!(
+            "Previous messages:\n{context_messages}\n\nCurrent message: {text}",
+        )
+    };
+
+    log::debug!("Random classification request: {content}");
+
+    // Construct request
+    let request = CreateChatCompletionRequestArgs::default()
+        .model(model)
+        .messages(vec![
+            ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessageArgs::default()
+                    .content(RANDOM_CLASSIFICATION_PROMPT.to_string())
+                    .build()?,
+            ),
+            ChatCompletionRequestMessage::User(
+                ChatCompletionRequestUserMessageArgs::default()
+                    .content(content)
+                    .build()?,
+            ),
+        ])
+        .response_format(ResponseFormat::JsonSchema {
+            json_schema: ResponseFormatJsonSchema {
+                name: "ClassificationResult".to_string(),
+                description: Some("Classification result".to_string()),
+                schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "intervene": {
+                            "type": "boolean",
+                            "description": "Should the bot intervene?"
+                        }
+                    },
+                    "required": ["intervene"],
+                    "additionalProperties": false
+                })),
+                strict: Some(true),
+            },
+        })
+        .max_tokens(20_u32)
+        .temperature(0.2)
+        .build()?;
+
+    // Make the request
+    let response = env
+        .openai_client
+        .chat()
+        .create(request)
+        .await
+        .tap(|r| crate::metrics::update_service("openai", r.is_ok()))?;
+
+    // Log token usage
+    if let Some(usage) = response.usage.as_ref() {
+        metrics::counter!(
+            METRIC_NAME,
+            usage.prompt_tokens.into(),
+            "type" => "prompt",
+        );
+        metrics::counter!(
+            METRIC_NAME,
+            usage.completion_tokens.into(),
+            "type" => "completion",
+        );
+    }
+
+    let choice =
+        response.choices.first().context("No choices in LLM response")?;
+    let content = choice.message.content.clone().unwrap_or_default();
+
+    // Check if the response is empty
+    if content.is_empty() {
+        return Err(anyhow::anyhow!("Empty response from classification"));
+    }
+
+    log::debug!("Random classification result: {content}");
+
+    // Parse the classification result
+    let classification: RandomClassificationResult =
+        serde_json::from_str(&content).map_err(|e| {
+            log::error!("Failed to parse classification response: {e}");
+            anyhow::anyhow!("Failed to parse classification response: {e}")
+        })?;
+
+    Ok(classification.intervene)
 }
