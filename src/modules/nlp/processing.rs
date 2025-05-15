@@ -965,4 +965,3 @@ pub async fn handle_search(env: &Arc<BotEnv>, query: &str) -> Result<String> {
     // Return the search result
     Ok(content)
 }
-
