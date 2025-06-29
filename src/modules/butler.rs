@@ -1,9 +1,11 @@
 //! Butler module for door opening functionality.
 
+use std::convert::TryFrom;
 use std::sync::Arc;
 
-use anyhow::Result;
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use macro_rules_attribute::derive;
+use rand::RngCore;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::*;
 use teloxide::types::{
@@ -13,6 +15,7 @@ use teloxide::types::{
 use teloxide::utils::command::BotCommands;
 
 use crate::common::{filter_command, BotCommandsExt, BotEnv, UpdateHandler};
+use crate::models::NewTempOpenToken;
 use crate::utils::{BotExt, MessageExt};
 
 #[derive(Clone, BotCommands, BotCommandsExt!)]
@@ -21,42 +24,98 @@ pub enum Commands {
     #[command(description = "open the door")]
     #[custom(resident = true)]
     Open,
+    #[command(description = "generate a temporary guest door access link")]
+    #[custom(resident = true)]
+    TempOpen,
 }
 
 pub fn command_handler() -> UpdateHandler {
-    filter_command::<Commands>().endpoint(handle_command)
+    filter_command::<Commands>().endpoint(
+        |bot: Bot, env: Arc<BotEnv>, msg: Message, cmd: Commands| async move {
+            match cmd {
+                Commands::Open => cmd_open(bot, env, msg).await,
+                Commands::TempOpen => cmd_temp_open(bot, env, msg).await,
+            }
+        },
+    )
 }
 
 pub fn callback_handler() -> UpdateHandler {
     dptree::filter_map(filter_callbacks).endpoint(handle_callback)
 }
 
-async fn handle_command(
+fn user_id_to_i64(user_id: teloxide::types::UserId) -> Option<i64> {
+    i64::try_from(user_id.0).ok()
+}
+fn i64_to_user_id(id: i64) -> Option<teloxide::types::UserId> {
+    u64::try_from(id).ok().map(teloxide::types::UserId)
+}
+
+/// Check if a user is a guest with a valid `temp_open` token
+fn guest_can_open(env: &Arc<BotEnv>, user_id: i64) -> Option<i64> {
+    use crate::schema::temp_open_tokens::dsl as t;
+    let now = chrono::Utc::now().naive_utc();
+    t::temp_open_tokens
+        .filter(t::guest_tg_id.eq(user_id))
+        .filter(t::expires_at.gt(now))
+        .first::<crate::models::TempOpenToken>(&mut *env.conn())
+        .optional()
+        .ok()
+        .flatten()
+        .map(|r| r.resident_tg_id)
+}
+
+/// Process door open command (resident or guest)
+async fn cmd_open(
     bot: Bot,
     env: Arc<BotEnv>,
     msg: Message,
-    command: Commands,
-) -> Result<()> {
-    match command {
-        Commands::Open => cmd_open(bot, env, msg).await,
-    }
-}
-
-/// Process door open command
-async fn cmd_open(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
+) -> anyhow::Result<()> {
     if env.config.services.butler.is_none() {
         bot.reply_message(&msg, "Door opening is not configured.").await?;
         return Ok(());
     }
-
-    let user = msg.from.clone().expect("from user");
-
-    // Check if user is a resident
-    if !crate::common::is_resident(&mut env.conn(), &user) {
-        bot.reply_message(&msg, "Only residents can open the door.").await?;
-        return Ok(());
+    let Some(user) = msg.from.clone() else { return Ok(()) };
+    let user_id = user_id_to_i64(user.id)
+        .ok_or_else(|| anyhow::anyhow!("User ID out of range"))?;
+    let is_resident = crate::common::is_resident(&mut env.conn(), &user);
+    if !is_resident {
+        // Check if guest with valid token
+        if let Some(resident_id) = guest_can_open(&env, user_id) {
+            // Check if inviter is on Wi-Fi
+            if let Some(inviter_uid) = i64_to_user_id(resident_id) {
+                let state = crate::modules::mac_monitoring::state();
+                if !state
+                    .read()
+                    .await
+                    .active_users()
+                    .is_some_and(|set| set.contains(&inviter_uid))
+                {
+                    bot.reply_message(&msg, "The resident who invited you is not currently on Wi-Fi. Door cannot be opened.").await?;
+                    return Ok(());
+                }
+            } else {
+                bot.reply_message(&msg, "Inviter ID is invalid.").await?;
+                return Ok(());
+            }
+            log::info!(
+                "Guest {} ({}) used temp_open (inviter: {})",
+                user.full_name(),
+                user.id,
+                resident_id
+            );
+        } else {
+            bot.reply_message(&msg, "Only residents or guests with a valid access link can open the door.").await?;
+            return Ok(());
+        }
     }
-
+    if is_resident {
+        log::info!(
+            "Resident {} ({}) opened the door",
+            user.full_name(),
+            user.id
+        );
+    }
     request_door_open_with_confirmation(
         &bot,
         Arc::<BotEnv>::clone(&env),
@@ -65,6 +124,42 @@ async fn cmd_open(bot: Bot, env: Arc<BotEnv>, msg: Message) -> Result<()> {
         &user,
     )
     .await?;
+    Ok(())
+}
+
+/// Handle /`temp_open` command
+async fn cmd_temp_open(
+    bot: Bot,
+    _env: Arc<BotEnv>,
+    msg: Message,
+) -> anyhow::Result<()> {
+    let Some(user) = msg.from.clone() else { return Ok(()) };
+    // Check Wi-Fi presence (active MAC)
+    let is_online = {
+        let state = crate::modules::mac_monitoring::state();
+        let guard = state.read().await;
+        guard.active_users().is_some_and(|set| set.contains(&user.id))
+    };
+    if !is_online {
+        bot.reply_message(&msg, "You must be connected to the hackerspace Wi-Fi to generate a temporary access link.").await?;
+        return Ok(());
+    }
+
+    // Show duration selection buttons
+    let keyboard = InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback("5 minutes", "butler:temp_open:5"),
+            InlineKeyboardButton::callback("15 minutes", "butler:temp_open:15"),
+        ],
+        vec![
+            InlineKeyboardButton::callback("30 minutes", "butler:temp_open:30"),
+            InlineKeyboardButton::callback("1 hour", "butler:temp_open:60"),
+        ],
+    ]);
+
+    let text = "🕒 Select duration for temporary guest access:";
+
+    bot.reply_message(&msg, text).reply_markup(keyboard).await?;
 
     Ok(())
 }
@@ -74,7 +169,7 @@ async fn execute_door_open(
     url: String,
     token: String,
     user: &User,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     let client = reqwest::Client::new();
 
     // Get the username or fallback to full name if username is not available
@@ -96,9 +191,11 @@ async fn execute_door_open(
 
 /// Format for the confirmation callback data
 #[derive(Debug, Clone)]
+#[allow(clippy::enum_variant_names)]
 enum CallbackAction {
     ConfirmOpen,
     CancelOpen,
+    TempOpen(u32), // Duration in minutes
 }
 
 /// Filter callback queries for door opening confirmation
@@ -108,31 +205,165 @@ fn filter_callbacks(callback: CallbackQuery) -> Option<CallbackAction> {
     match data.as_str() {
         "butler:confirm_open" => Some(CallbackAction::ConfirmOpen),
         "butler:cancel_open" => Some(CallbackAction::CancelOpen),
+        data if data.starts_with("butler:temp_open:") => data
+            .strip_prefix("butler:temp_open:")
+            .and_then(|duration_str| duration_str.parse::<u32>().ok())
+            .map(CallbackAction::TempOpen),
         _ => None,
     }
 }
 
 /// Handle callback queries for door opening confirmation
+#[allow(clippy::too_many_lines)]
 async fn handle_callback(
     bot: Bot,
     env: Arc<BotEnv>,
     callback: CallbackQuery,
     action: CallbackAction,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     let Some(msg) = &callback.message else {
         return Ok(());
     };
 
-    // Check if user is a resident
-    if !crate::common::is_resident(&mut env.conn(), &callback.from) {
+    let user_id = user_id_to_i64(callback.from.id)
+        .ok_or_else(|| anyhow::anyhow!("User ID out of range"))?;
+    let is_resident =
+        crate::common::is_resident(&mut env.conn(), &callback.from);
+
+    // Check if user is a resident or guest with valid token
+    let can_open = if is_resident {
+        true
+    } else {
+        guest_can_open(&env, user_id).is_some()
+    };
+
+    if !can_open {
         bot.answer_callback_query(&callback.id)
-            .text("Only residents can interact with this.")
+            .text("Only residents or guests with valid access can interact with this.")
             .await?;
         return Ok(());
     }
 
     match action {
+        CallbackAction::TempOpen(duration_minutes) => {
+            // Only residents can generate temp_open links
+            if !is_resident {
+                bot.answer_callback_query(&callback.id)
+                    .text("Only residents can generate temporary access links.")
+                    .await?;
+                return Ok(());
+            }
+
+            // Check Wi-Fi presence (active MAC)
+            let is_online = {
+                let state = crate::modules::mac_monitoring::state();
+                let guard = state.read().await;
+                guard
+                    .active_users()
+                    .is_some_and(|set| set.contains(&callback.from.id))
+            };
+            if !is_online {
+                bot.answer_callback_query(&callback.id)
+                    .text("You must be connected to the hackerspace Wi-Fi to generate a temporary access link.")
+                    .show_alert(true)
+                    .await?;
+                return Ok(());
+            }
+
+            // Generate token and create link
+            let token = generate_token();
+            let duration =
+                chrono::Duration::minutes(i64::from(duration_minutes));
+            let expires_at = chrono::Utc::now().naive_utc() + duration;
+            let resident_tg_id = user_id_to_i64(callback.from.id)
+                .ok_or_else(|| anyhow::anyhow!("User ID out of range"))?;
+
+            // Store in DB
+            env.transaction(|conn| {
+                use crate::schema::temp_open_tokens::dsl as t;
+                diesel::insert_into(t::temp_open_tokens)
+                    .values(&NewTempOpenToken {
+                        token: &token,
+                        resident_tg_id,
+                        expires_at,
+                    })
+                    .execute(conn)
+            })?;
+
+            // Get bot username and create link
+            let bot_username =
+                bot.get_me().await?.user.username.unwrap_or_default();
+            let link =
+                format!("https://t.me/{bot_username}?start=temp_open:{token}");
+            let url = reqwest::Url::parse(&link).unwrap_or_else(|_| {
+                reqwest::Url::parse("https://t.me").unwrap()
+            });
+
+            // Update the message with the generated link
+            let text = format!("✅ Temporary guest access link (valid for {} min):\n<code>{}</code>", duration.num_minutes(), link);
+            let button = InlineKeyboardMarkup::new(vec![vec![
+                InlineKeyboardButton::url("Share link", url),
+            ]]);
+
+            bot.edit_message_text(msg.chat.id, msg.id, text)
+                .parse_mode(ParseMode::Html)
+                .reply_markup(button)
+                .await?;
+
+            bot.answer_callback_query(&callback.id)
+                .text(format!(
+                    "Temporary access link generated (valid for {} min)",
+                    duration.num_minutes()
+                ))
+                .await?;
+
+            log::info!(
+                "Resident {} ({}) generated temp_open link {} (expires at {})",
+                callback.from.full_name(),
+                callback.from.id,
+                token,
+                expires_at
+            );
+        }
         CallbackAction::ConfirmOpen => {
+            // For guests, check if inviter is on Wi-Fi
+            if !is_resident {
+                if let Some(resident_id) = guest_can_open(&env, user_id) {
+                    if let Some(inviter_uid) = i64_to_user_id(resident_id) {
+                        let state = crate::modules::mac_monitoring::state();
+                        if !state
+                            .read()
+                            .await
+                            .active_users()
+                            .is_some_and(|set| set.contains(&inviter_uid))
+                        {
+                            bot.answer_callback_query(&callback.id)
+                                .text("The resident who invited you is not currently on Wi-Fi. Door cannot be opened.")
+                                .await?;
+                            return Ok(());
+                        }
+                    } else {
+                        bot.answer_callback_query(&callback.id)
+                            .text("Inviter ID is invalid.")
+                            .await?;
+                        return Ok(());
+                    }
+                    log::info!(
+                        "Guest {} ({}) used temp_open via button (inviter: {})",
+                        callback.from.full_name(),
+                        callback.from.id,
+                        resident_id
+                    );
+                }
+            }
+            if is_resident {
+                log::info!(
+                    "Resident {} ({}) opened the door via button",
+                    callback.from.full_name(),
+                    callback.from.id
+                );
+            }
+
             // Execute the door opening
             let Some(butler_config) = &env.config.services.butler else {
                 bot.answer_callback_query(&callback.id)
@@ -202,7 +433,7 @@ pub async fn request_door_open_with_confirmation(
     chat_id: ChatId,
     thread_id: Option<ThreadId>,
     from_user: &User,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     // Check if user is a resident
     if !crate::common::is_resident(&mut env.conn(), from_user) {
         bot.send_message(chat_id, "Only residents can open the door.").await?;
@@ -230,5 +461,113 @@ pub async fn request_door_open_with_confirmation(
 
     msg_builder.await?;
 
+    Ok(())
+}
+
+/// Generate a random token for temporary access links
+fn generate_token() -> String {
+    const CHARSET: &[u8] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let mut rng = rand::rng();
+    (0..32)
+        .map(|_| {
+            let idx = (rng.next_u32() as usize) % CHARSET.len();
+            CHARSET[idx] as char
+        })
+        .collect()
+}
+
+/// Handler for guest activation via /start `temp_open`:<token>
+pub fn guest_token_handler() -> crate::common::UpdateHandler {
+    use std::sync::Arc;
+
+    use teloxide::prelude::*;
+    use teloxide::types::Message;
+
+    use crate::common::BotEnv;
+
+    Update::filter_message().filter_map(|msg: Message| {
+        let text = msg.text().unwrap_or("");
+        text.strip_prefix("/start temp_open:").map(|token| token.trim().to_string())
+    }).endpoint(|bot: Bot, env: Arc<BotEnv>, msg: Message, token: String| async move {
+        handle_guest_token_activation(bot, env, msg, token).await
+    })
+}
+
+async fn handle_guest_token_activation(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+    token: String,
+) -> anyhow::Result<()> {
+    let Some(guest) = msg.from.clone() else { return Ok(()) };
+    let guest_id = user_id_to_i64(guest.id)
+        .ok_or_else(|| anyhow::anyhow!("User ID out of range"))?;
+    // DB access block
+    use crate::schema::temp_open_tokens::dsl as t;
+    let now = chrono::Utc::now().naive_utc();
+    let (token_row, already_used_by_other_guest);
+    {
+        let row = t::temp_open_tokens
+            .filter(t::token.eq(&token))
+            .filter(t::expires_at.gt(now))
+            .select((
+                t::id,
+                t::token,
+                t::resident_tg_id,
+                t::guest_tg_id,
+                t::created_at,
+                t::expires_at,
+                t::used_at,
+            ))
+            .first::<crate::models::TempOpenToken>(&mut *env.conn())
+            .optional()?;
+        if let Some(row) = row {
+            let guest_db_id = row.guest_tg_id;
+            already_used_by_other_guest =
+                guest_db_id.is_some() && guest_db_id != Some(guest_id);
+            token_row = Some(row);
+        } else {
+            already_used_by_other_guest = false;
+            token_row = None;
+        }
+    }
+    // Now safe to await
+    let Some(token_row) = token_row else {
+        bot.reply_message(&msg, "Invalid or expired guest access link.")
+            .await?;
+        return Ok(());
+    };
+    if already_used_by_other_guest {
+        bot.reply_message(
+            &msg,
+            "This guest link has already been used by another user.",
+        )
+        .await?;
+        return Ok(());
+    }
+    // Mark token as used by this guest (do not hold conn across await)
+    {
+        let mut conn = env.conn();
+        diesel::update(t::temp_open_tokens.filter(t::id.eq(token_row.id)))
+            .set(t::guest_tg_id.eq(guest_id))
+            .execute(&mut *conn)?;
+    }
+    // Create "Open the door" button
+    let keyboard =
+        InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+            "🚪 Open the door",
+            "butler:confirm_open",
+        )]]);
+
+    let response_text = "✅ Guest access activated! You can now use /open to temporarily open the door or click the button below. This action will be logged.";
+
+    bot.reply_message(&msg, response_text).reply_markup(keyboard).await?;
+    log::info!(
+        "Guest {} ({}) activated temp_open (inviter: {})",
+        guest.full_name(),
+        guest.id,
+        token_row.resident_tg_id
+    );
     Ok(())
 }
