@@ -77,7 +77,7 @@ diesel::table! {
 
 diesel::table! {
     temp_open_tokens (id) {
-        id -> Nullable<Integer>,
+        id -> Integer,
         token -> Text,
         resident_tg_id -> BigInt,
         guest_tg_id -> Nullable<BigInt>,
