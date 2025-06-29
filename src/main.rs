@@ -160,6 +160,14 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         openai_config = openai_config.with_api_base(api_base.clone());
     }
 
+    // Create bot and set API URL
+    let bot = Bot::new(&config.telegram.token);
+    let proxy_addr = tracing_proxy::start().await?;
+    let bot = bot.set_api_url(proxy_addr);
+
+    // Get bot's user ID
+    let me = bot.get_me().await?;
+    let bot_user_id = me.id.0;
     let bot_env = Arc::new(common::BotEnv {
         conn: Mutex::new(SqliteConnection::establish(&format!(
             "sqlite://{DB_FILENAME}"
@@ -171,10 +179,8 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         ldap_client: Arc::<tokio::sync::Mutex<common::LdapClientState>>::clone(
             &ldap_client,
         ),
+        bot_user_id,
     });
-
-    let proxy_addr = tracing_proxy::start().await?;
-    let bot = Bot::new(&bot_env.config.telegram.token).set_api_url(proxy_addr);
 
     let mac_monitoring_state = modules::mac_monitoring::state();
 

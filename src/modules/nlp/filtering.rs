@@ -77,10 +77,12 @@ pub fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
         return None;
     }
 
-    // Process if message is a reply to a bot message
+    // Process if message is a reply to a message from this bot
     if let Some(replied_msg) = msg.reply_to_message() {
-        if replied_msg.from.as_ref().is_some_and(|user| user.is_bot) {
-            return Some(msg);
+        if let Some(user) = &replied_msg.from {
+            if user.is_bot && user.id.0 == env.bot_user_id {
+                return Some(msg);
+            }
         }
     }
 
