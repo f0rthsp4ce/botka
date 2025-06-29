@@ -105,6 +105,7 @@ pub struct BotEnv {
     pub openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
     // For some reason std mutexes not working in teloxide handlers
     pub ldap_client: Arc<tokio::sync::Mutex<LdapClientState>>,
+    pub bot_user_id: u64, // The user ID of this bot instance (u64)
 }
 
 impl BotEnv {
