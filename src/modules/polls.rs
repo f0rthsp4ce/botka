@@ -123,10 +123,12 @@ async fn intercept_new_poll(
     creator: User,
     env: Arc<BotEnv>,
 ) -> Result<()> {
+    // Remove leading exclamation mark from poll question
+    let question = poll.question.strip_prefix('!').unwrap_or(&poll.question).trim_start();
     let mut new_poll = bot
         .send_poll(
             msg.chat.id,
-            &poll.question,
+            question,
             poll.options.iter().map(|o| o.text.clone()),
         )
         .is_anonymous(poll.is_anonymous)
