@@ -44,6 +44,11 @@ pub fn filter_nlp_messages(env: Arc<BotEnv>, msg: Message) -> Option<Message> {
         return None;
     }
 
+    // Skip if the message is forwarded.
+    if msg.forward().is_some() {
+        return None;
+    }
+
     // Skip messages without text or without caption
     let text = msg.text().or_else(|| msg.caption())?;
 
