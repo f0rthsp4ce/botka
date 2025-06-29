@@ -1,6 +1,6 @@
 -- Create table for temporary open tokens
 CREATE TABLE temp_open_tokens (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     token TEXT NOT NULL UNIQUE,
     resident_tg_id BIGINT NOT NULL,
     guest_tg_id BIGINT,
