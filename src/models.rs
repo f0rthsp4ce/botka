@@ -119,11 +119,24 @@ pub struct BorrowedItems {
     pub bot_message_id: DbMessageId,
     pub user_id: DbUserId,
     pub items: Sqlizer<Vec<BorrowedItem>>,
+    pub created_at: chrono::NaiveDateTime,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BorrowedItem {
     pub name: String,
     pub returned: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Clone, Debug, Insertable, Queryable, Selectable)]
+#[diesel(table_name = crate::schema::borrowed_items_reminders)]
+pub struct BorrowedItemsReminder {
+    pub chat_id: DbChatId,
+    pub user_message_id: DbMessageId,
+    pub user_id: DbUserId,
+    pub item_name: String,
+    pub reminders_sent: i32,
+    pub last_reminder_sent: Option<chrono::NaiveDateTime>,
+    pub created_at: chrono::NaiveDateTime,
 }
 
 #[derive(Clone, Debug, Insertable)]

@@ -23,6 +23,8 @@ pub struct Config {
     pub services: Services,
     #[serde(default)]
     pub nlp: NlpConfig,
+    #[serde(default)]
+    pub borrowed_items: BorrowedItemsConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -201,6 +203,44 @@ pub struct EspCam {
 pub struct Butler {
     pub url: String,
     pub token: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct BorrowedItemsConfig {
+    #[serde(default)]
+    pub reminders: Option<BorrowedItemsReminders>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BorrowedItemsReminders {
+    /// How often to check for overdue items (in hours)
+    #[serde(default = "default_borrowed_items_check_interval")]
+    pub check_interval_hours: u64,
+    /// After how many hours to consider an item overdue
+    #[serde(default = "default_borrowed_items_overdue_hours")]
+    pub overdue_after_hours: u64,
+    /// Maximum number of reminders to send for one item
+    #[serde(default = "default_borrowed_items_max_reminders")]
+    pub max_reminders: u32,
+    /// Interval between reminders (in hours)
+    #[serde(default = "default_borrowed_items_reminder_interval")]
+    pub reminder_interval_hours: u64,
+}
+
+const fn default_borrowed_items_check_interval() -> u64 {
+    6 // Check every 6 hours
+}
+
+const fn default_borrowed_items_overdue_hours() -> u64 {
+    24 // Consider overdue after 24 hours
+}
+
+const fn default_borrowed_items_max_reminders() -> u32 {
+    3 // Send maximum 3 reminders
+}
+
+const fn default_borrowed_items_reminder_interval() -> u64 {
+    12 // Send reminders every 12 hours
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

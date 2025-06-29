@@ -12,17 +12,18 @@ use async_openai::types::{
     ChatCompletionRequestUserMessageContentPart,
     CreateChatCompletionRequestArgs, ImageDetail, ImageUrl,
 };
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use itertools::Itertools;
 use tap::Tap as _;
 use teloxide::prelude::*;
 use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardMarkup, MessageId, ParseMode,
-    ReplyMarkup, User,
+    ReplyMarkup, ThreadId, User,
 };
 use teloxide::utils::html;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 use crate::common::{BotEnv, UpdateHandler};
 use crate::db::{DbChatId, DbUserId};
@@ -365,6 +366,7 @@ async fn handle_message(
                         bot_message_id: bot_message.id.into(),
                         user_id: msg.from.unwrap().id.into(),
                         items: Sqlizer::new(items).unwrap(),
+                        created_at: chrono::Utc::now().naive_utc(),
                     })
                     .execute(conn)?;
                 Ok(())
@@ -1457,6 +1459,315 @@ async fn match_returned_items_with_llm(
 
     log::info!("Fuzzy matching found {} matches: {:?}", matches.len(), matches);
     Ok(matches)
+}
+
+// ============================================================================
+// Butler Reminders - Functionality for reminding users about borrowed items
+// ============================================================================
+
+/// Background task to check for overdue borrowed items and send reminders
+pub async fn reminder_task(
+    env: Arc<BotEnv>,
+    bot: Bot,
+    cancel: CancellationToken,
+) {
+    let Some(reminder_config) = &env.config.borrowed_items.reminders else {
+        log::info!(
+            "Borrowed items reminder settings are not configured, skipping task"
+        );
+        return;
+    };
+
+    let check_interval =
+        Duration::from_secs(reminder_config.check_interval_hours * 3600);
+
+    loop {
+        tokio::select! {
+            () = cancel.cancelled() => {
+                log::info!("Butler reminder task cancelled");
+                break;
+            }
+            () = sleep(check_interval) => {
+                if let Err(e) = check_and_send_reminders(&env, &bot, reminder_config).await {
+                    log::error!("Error in butler reminder task: {e}");
+                }
+            }
+        }
+    }
+}
+
+/// Check for overdue items and send reminders
+async fn check_and_send_reminders(
+    env: &Arc<BotEnv>,
+    bot: &Bot,
+    reminder_config: &crate::config::BorrowedItemsReminders,
+) -> Result<()> {
+    let overdue_threshold = Utc::now().naive_utc()
+        - chrono::Duration::hours(
+            i64::try_from(reminder_config.overdue_after_hours).unwrap_or(24),
+        );
+
+    // Find all borrowed items that are overdue and not returned
+    let overdue_items: Vec<models::BorrowedItems> =
+        env.transaction(|conn| {
+            schema::borrowed_items::table
+                .filter(
+                    schema::borrowed_items::created_at.lt(overdue_threshold),
+                )
+                .load(conn)
+        })?;
+
+    for borrowed_items in overdue_items {
+        // Check each item in the borrowed_items record
+        for (item_index, item) in borrowed_items.items.iter().enumerate() {
+            // Skip if item is already returned
+            if item.returned.is_some() {
+                continue;
+            }
+
+            // Check if we should send a reminder for this item
+            if should_send_reminder(
+                env,
+                &borrowed_items,
+                &item.name,
+                reminder_config,
+            )? {
+                send_reminder(
+                    env,
+                    bot,
+                    &borrowed_items,
+                    &item.name,
+                    item_index,
+                )
+                .await?;
+                record_reminder_sent(env, &borrowed_items, &item.name)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Check if we should send a reminder for a specific item
+fn should_send_reminder(
+    env: &Arc<BotEnv>,
+    borrowed_items: &models::BorrowedItems,
+    item_name: &str,
+    reminder_config: &crate::config::BorrowedItemsReminders,
+) -> Result<bool> {
+    let reminder: Option<models::BorrowedItemsReminder> =
+        env.transaction(|conn| {
+            schema::borrowed_items_reminders::table
+                .filter(
+                    schema::borrowed_items_reminders::chat_id
+                        .eq(borrowed_items.chat_id),
+                )
+                .filter(
+                    schema::borrowed_items_reminders::user_message_id
+                        .eq(borrowed_items.user_message_id),
+                )
+                .filter(
+                    schema::borrowed_items_reminders::item_name.eq(item_name),
+                )
+                .first(conn)
+                .optional()
+        })?;
+
+    let Some(reminder) = reminder else {
+        // No reminder record exists yet, so we should send the first one
+        return Ok(true);
+    };
+
+    // Check if we've exceeded the maximum number of reminders
+    if reminder.reminders_sent
+        >= i32::try_from(reminder_config.max_reminders).unwrap_or(3)
+    {
+        return Ok(false);
+    }
+
+    // Check if enough time has passed since the last reminder
+    if let Some(last_sent) = reminder.last_reminder_sent {
+        let time_since_last = Utc::now().naive_utc() - last_sent;
+        let required_interval = chrono::Duration::hours(
+            i64::try_from(reminder_config.reminder_interval_hours)
+                .unwrap_or(12),
+        );
+
+        if time_since_last < required_interval {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+/// Send a reminder message to the user
+async fn send_reminder(
+    env: &Arc<BotEnv>,
+    bot: &Bot,
+    borrowed_items: &models::BorrowedItems,
+    item_name: &str,
+    _item_index: usize,
+) -> Result<()> {
+    let user: models::TgUser = env.transaction(|conn| {
+        schema::tg_users::table
+            .filter(schema::tg_users::id.eq(borrowed_items.user_id))
+            .first(conn)
+    })?;
+
+    let days_borrowed =
+        (Utc::now().naive_utc() - borrowed_items.created_at).num_days();
+
+    // Check if this will be the final reminder
+    let reminder_count = env.transaction(|conn| {
+        schema::borrowed_items_reminders::table
+            .filter(
+                schema::borrowed_items_reminders::chat_id
+                    .eq(borrowed_items.chat_id),
+            )
+            .filter(
+                schema::borrowed_items_reminders::user_message_id
+                    .eq(borrowed_items.user_message_id),
+            )
+            .filter(schema::borrowed_items_reminders::item_name.eq(item_name))
+            .select(schema::borrowed_items_reminders::reminders_sent)
+            .first::<i32>(conn)
+            .optional()
+    })?;
+
+    let current_reminder_count = reminder_count.unwrap_or(0) + 1;
+    let max_reminders = i32::try_from(
+        env.config
+            .borrowed_items
+            .reminders
+            .as_ref()
+            .map_or(3, |r| r.max_reminders),
+    )
+    .unwrap_or(3);
+    let is_final_reminder = current_reminder_count >= max_reminders;
+
+    let (text, send_to_public_topic) = if is_final_reminder {
+        // Final reminder - send publicly to borrowed items topic
+        let text = format!(
+            "� <b>Borrowed Item Reminder</b>\n\n\
+            {} has been using <b>{}</b> from the hackerspace for {} days now.\n\n\
+            Hey! Just a gentle reminder that other residents might also want to use this item. \
+            If you still need it, no worries - just let us know how much longer you'll need it!",
+            html::user_mention(UserId::from(user.id), &user.first_name),
+            item_name,
+            days_borrowed
+        );
+        (text, true)
+    } else {
+        // Regular reminder - send privately as reply
+        let text = format!(
+            "👋 <b>Borrowed Item Reminder</b>\n\n\
+            Hi {}! You've been using <b>{}</b> from the hackerspace for {} days.\n\n\
+            Just wondering - are you still using it, or would it be ready to return? \
+            Other residents might be interested in borrowing it too. Thanks! 😊",
+            user.first_name,
+            item_name,
+            days_borrowed
+        );
+        (text, false)
+    };
+
+    if send_to_public_topic {
+        // Send to the first borrowed_items topic publicly
+        if let Some(borrowed_items_chat) =
+            env.config.telegram.chats.borrowed_items.first()
+        {
+            bot.send_message(borrowed_items_chat.chat, text)
+                .parse_mode(ParseMode::Html)
+                .message_thread_id(borrowed_items_chat.thread)
+                .await?;
+
+            log::info!(
+                "Sent final public reminder for user {} and item '{}' (borrowed {} days ago) to borrowed items topic",
+                user.first_name,
+                item_name,
+                days_borrowed
+            );
+        } else {
+            log::warn!(
+                "No borrowed_items chat configured for public final reminder"
+            );
+            // Fallback to private reminder
+            let mut send_msg = bot
+                .send_message(ChatId::from(borrowed_items.chat_id), text)
+                .parse_mode(ParseMode::Html)
+                .message_thread_id(ThreadId::from(borrowed_items.thread_id));
+
+            send_msg = send_msg.reply_to_message_id(MessageId::from(
+                borrowed_items.user_message_id,
+            ));
+
+            send_msg.await?;
+        }
+    } else {
+        // Send private reminder as reply to original message
+        let mut send_msg = bot
+            .send_message(ChatId::from(borrowed_items.chat_id), text)
+            .parse_mode(ParseMode::Html)
+            .message_thread_id(ThreadId::from(borrowed_items.thread_id));
+
+        send_msg = send_msg.reply_to_message_id(MessageId::from(
+            borrowed_items.user_message_id,
+        ));
+
+        send_msg.await?;
+
+        log::info!(
+            "Sent private reminder to user {} for item '{}' (borrowed {} days ago)",
+            user.first_name,
+            item_name,
+            days_borrowed
+        );
+    }
+
+    Ok(())
+}
+
+/// Record that a reminder was sent
+fn record_reminder_sent(
+    env: &Arc<BotEnv>,
+    borrowed_items: &models::BorrowedItems,
+    item_name: &str,
+) -> Result<()> {
+    env.transaction(|conn| {
+        diesel::insert_into(schema::borrowed_items_reminders::table)
+            .values((
+                schema::borrowed_items_reminders::chat_id
+                    .eq(borrowed_items.chat_id),
+                schema::borrowed_items_reminders::user_message_id
+                    .eq(borrowed_items.user_message_id),
+                schema::borrowed_items_reminders::user_id
+                    .eq(borrowed_items.user_id),
+                schema::borrowed_items_reminders::item_name.eq(item_name),
+                schema::borrowed_items_reminders::reminders_sent.eq(1),
+                schema::borrowed_items_reminders::last_reminder_sent
+                    .eq(Some(Utc::now().naive_utc())),
+                schema::borrowed_items_reminders::created_at
+                    .eq(Utc::now().naive_utc()),
+            ))
+            .on_conflict((
+                schema::borrowed_items_reminders::chat_id,
+                schema::borrowed_items_reminders::user_message_id,
+                schema::borrowed_items_reminders::item_name,
+            ))
+            .do_update()
+            .set((
+                schema::borrowed_items_reminders::reminders_sent
+                    .eq(schema::borrowed_items_reminders::reminders_sent + 1),
+                schema::borrowed_items_reminders::last_reminder_sent
+                    .eq(Some(Utc::now().naive_utc())),
+            ))
+            .execute(conn)?;
+
+        Ok(())
+    })?;
+
+    Ok(())
 }
 
 #[cfg(test)]
