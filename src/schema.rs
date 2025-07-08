@@ -76,6 +76,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    temp_open_tokens (id) {
+        id -> Integer,
+        token -> Text,
+        resident_tg_id -> BigInt,
+        guest_tg_id -> Nullable<BigInt>,
+        created_at -> Timestamp,
+        expires_at -> Timestamp,
+        used_at -> Nullable<Timestamp>,
+    }
+}
+
+diesel::table! {
     tg_chat_topics (chat_id, topic_id) {
         chat_id -> BigInt,
         topic_id -> Integer,
@@ -148,6 +160,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     needed_items,
     options,
     residents,
+    temp_open_tokens,
     tg_chat_topics,
     tg_chats,
     tg_users,

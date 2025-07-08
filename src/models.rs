@@ -218,6 +218,26 @@ pub struct NewChatHistoryEntry<'a> {
     pub used_model: Option<&'a str>,
 }
 
+#[derive(Clone, Debug, Queryable, Insertable, Selectable)]
+#[diesel(table_name = crate::schema::temp_open_tokens)]
+pub struct TempOpenToken {
+    pub id: i32,
+    pub token: String,
+    pub resident_tg_id: i64,
+    pub guest_tg_id: Option<i64>,
+    pub created_at: chrono::NaiveDateTime,
+    pub expires_at: chrono::NaiveDateTime,
+    pub used_at: Option<chrono::NaiveDateTime>,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::temp_open_tokens)]
+pub struct NewTempOpenToken<'a> {
+    pub token: &'a str,
+    pub resident_tg_id: i64,
+    pub expires_at: chrono::NaiveDateTime,
+}
+
 // Database option models
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
