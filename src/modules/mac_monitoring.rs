@@ -147,3 +147,39 @@ pub async fn watch_loop(env: Arc<BotEnv>, state: Arc<RwLock<State>>, bot: Bot) {
         sleep(Duration::from_secs(60)).await;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_state_singleton() {
+        // Test that state() returns the same instance
+        let state1 = state();
+        let state2 = state();
+        
+        // They should be the same Arc instance
+        assert!(Arc::ptr_eq(&state1, &state2));
+        
+        // Test that state modification is shared
+        {
+            let mut guard = state1.write().await;
+            guard.0 = Some(std::collections::HashSet::new());
+        }
+        
+        // The change should be visible in state2
+        {
+            let guard = state2.read().await;
+            assert!(guard.0.is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_active_users_none_initially() {
+        // Test that active_users returns None initially
+        let test_state = Arc::new(RwLock::new(State::default()));
+        let guard = test_state.read().await;
+        assert!(guard.active_users().is_none());
+    }
+}
