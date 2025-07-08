@@ -95,7 +95,7 @@ async fn cmd_open(
                     .read()
                     .await
                     .active_users()
-                    .map_or(false, |set| set.contains(&inviter_uid))
+                    .is_some_and(|set| set.contains(&inviter_uid))
                 {
                     log::debug!("Guest {} ({}) blocked: inviter {} not on Wi-Fi. Active users: {:?}", 
                         user.full_name(), user.id, inviter_uid, 
@@ -147,15 +147,12 @@ async fn cmd_temp_open(
     // Check Wi-Fi presence (active MAC)
     let is_online = {
         let guard = mac_monitoring_state.read().await;
-        match guard.active_users() {
-            Some(set) => set.contains(&user.id),
-            None => {
-                log::info!("MAC monitoring state not initialized for user {} ({})", 
-                    user.full_name(), user.id);
-                // Don't allow access if monitoring system is not initialized yet
-                bot.reply_message(&msg, "MAC monitoring system is initializing. Please try again in a few moments.").await?;
-                return Ok(());
-            }
+        if let Some(set) = guard.active_users() { set.contains(&user.id) } else {
+            log::info!("MAC monitoring state not initialized for user {} ({})", 
+                user.full_name(), user.id);
+            // Don't allow access if monitoring system is not initialized yet
+            bot.reply_message(&msg, "MAC monitoring system is initializing. Please try again in a few moments.").await?;
+            return Ok(());
         }
     };
     if !is_online {
@@ -279,17 +276,14 @@ async fn handle_callback(
             // Check Wi-Fi presence (active MAC)
             let is_online = {
                 let guard = mac_monitoring_state.read().await;
-                match guard.active_users() {
-                    Some(set) => set.contains(&callback.from.id),
-                    None => {
-                        log::info!("MAC monitoring state not initialized for user {} ({})", 
-                            callback.from.full_name(), callback.from.id);
-                        bot.answer_callback_query(&callback.id)
-                            .text("MAC monitoring system is initializing. Please try again in a few moments.")
-                            .show_alert(true)
-                            .await?;
-                        return Ok(());
-                    }
+                if let Some(set) = guard.active_users() { set.contains(&callback.from.id) } else {
+                    log::info!("MAC monitoring state not initialized for user {} ({})", 
+                        callback.from.full_name(), callback.from.id);
+                    bot.answer_callback_query(&callback.id)
+                        .text("MAC monitoring system is initializing. Please try again in a few moments.")
+                        .show_alert(true)
+                        .await?;
+                    return Ok(());
                 }
             };
             if !is_online {
@@ -367,7 +361,7 @@ async fn handle_callback(
                             .read()
                             .await
                             .active_users()
-                            .map_or(false, |set| set.contains(&inviter_uid))
+                            .is_some_and(|set| set.contains(&inviter_uid))
                         {
                             log::debug!("Guest {} ({}) blocked: inviter {} not on Wi-Fi. Active users: {:?}", 
                                 callback.from.full_name(), callback.from.id, inviter_uid, 

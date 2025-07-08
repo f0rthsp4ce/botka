@@ -32,7 +32,7 @@ impl State {
 pub fn state() -> Arc<RwLock<State>> {
     use std::sync::OnceLock;
     static STATE: OnceLock<Arc<RwLock<State>>> = OnceLock::new();
-    STATE.get_or_init(|| Arc::new(RwLock::new(State::default()))).clone()
+    Arc::clone(STATE.get_or_init(|| Arc::new(RwLock::new(State::default()))))
 }
 
 async fn mac_monitoring(
