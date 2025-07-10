@@ -32,7 +32,7 @@ impl State {
 pub fn state() -> Arc<RwLock<State>> {
     use std::sync::OnceLock;
     static STATE: OnceLock<Arc<RwLock<State>>> = OnceLock::new();
-    STATE.get_or_init(|| Arc::new(RwLock::new(State::default()))).clone()
+    Arc::clone(STATE.get_or_init(|| Arc::new(RwLock::new(State::default()))))
 }
 
 async fn mac_monitoring(
@@ -170,8 +170,7 @@ mod tests {
         
         // The change should be visible in state2
         {
-            let guard = state2.read().await;
-            assert!(guard.0.is_some());
+            assert!(state2.read().await.0.is_some());
         }
     }
 
@@ -179,7 +178,6 @@ mod tests {
     async fn test_active_users_none_initially() {
         // Test that active_users returns None initially
         let test_state = Arc::new(RwLock::new(State::default()));
-        let guard = test_state.read().await;
-        assert!(guard.active_users().is_none());
+        assert!(test_state.read().await.active_users().is_none());
     }
 }
