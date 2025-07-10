@@ -1601,6 +1601,127 @@ fn should_send_reminder(
     Ok(true)
 }
 
+/// Get the current reminder count for a borrowed item
+fn get_reminder_count(
+    env: &Arc<BotEnv>,
+    borrowed_items: &models::BorrowedItems,
+    item_name: &str,
+) -> Result<i32> {
+    let reminder_count = env.transaction(|conn| {
+        schema::borrowed_items_reminders::table
+            .filter(
+                schema::borrowed_items_reminders::chat_id
+                    .eq(borrowed_items.chat_id),
+            )
+            .filter(
+                schema::borrowed_items_reminders::user_message_id
+                    .eq(borrowed_items.user_message_id),
+            )
+            .filter(schema::borrowed_items_reminders::item_name.eq(item_name))
+            .select(schema::borrowed_items_reminders::reminders_sent)
+            .first::<i32>(conn)
+            .optional()
+    })?;
+
+    Ok(reminder_count.unwrap_or(0) + 1)
+}
+
+/// Check if this should be the final reminder
+fn is_final_reminder(env: &Arc<BotEnv>, current_count: i32) -> bool {
+    let max_reminders = i32::try_from(
+        env.config
+            .borrowed_items
+            .reminders
+            .as_ref()
+            .map_or(3, |r| r.max_reminders),
+    )
+    .unwrap_or(3);
+    current_count >= max_reminders
+}
+
+/// Build the reminder message text
+fn build_reminder_text(
+    user: &models::TgUser,
+    item_name: &str,
+    days_borrowed: i64,
+    is_final_reminder: bool,
+) -> String {
+    if is_final_reminder {
+        format!(
+            " <b>Borrowed Item Reminder</b>\n\n\
+            {} has been using <b>{}</b> from the hackerspace for {} days now.\n\n\
+            Hey! Just a gentle reminder that other residents might also want to use this item. \
+            If you still need it, no worries - just let us know how much longer you'll need it!",
+            html::user_mention(UserId::from(user.id), &user.first_name),
+            item_name,
+            days_borrowed
+        )
+    } else {
+        format!(
+            "👋 <b>Borrowed Item Reminder</b>\n\n\
+            Hi {}! You've been using <b>{}</b> from the hackerspace for {} days.\n\n\
+            Just wondering - are you still using it, or would it be ready to return? \
+            Other residents might be interested in borrowing it too. Thanks! 😊",
+            user.first_name,
+            item_name,
+            days_borrowed
+        )
+    }
+}
+
+/// Send a public reminder to the borrowed items topic
+async fn send_public_reminder(
+    bot: &Bot,
+    env: &Arc<BotEnv>,
+    borrowed_items: &models::BorrowedItems,
+    text: &str,
+    user: &models::TgUser,
+    item_name: &str,
+    days_borrowed: i64,
+) -> Result<()> {
+    if let Some(borrowed_items_chat) =
+        env.config.telegram.chats.borrowed_items.first()
+    {
+        bot.send_message(borrowed_items_chat.chat, text)
+            .parse_mode(ParseMode::Html)
+            .message_thread_id(borrowed_items_chat.thread)
+            .await?;
+
+        log::info!(
+            "Sent final public reminder for user {} and item '{}' (borrowed {} days ago) to borrowed items topic",
+            user.first_name,
+            item_name,
+            days_borrowed
+        );
+    } else {
+        log::warn!(
+            "No borrowed_items chat configured for public final reminder"
+        );
+        // Fallback to private reminder
+        send_private_reminder(bot, borrowed_items, text).await?;
+    }
+    Ok(())
+}
+
+/// Send a private reminder as reply to the original message
+async fn send_private_reminder(
+    bot: &Bot,
+    borrowed_items: &models::BorrowedItems,
+    text: &str,
+) -> Result<()> {
+    let mut send_msg = bot
+        .send_message(ChatId::from(borrowed_items.chat_id), text)
+        .parse_mode(ParseMode::Html)
+        .message_thread_id(ThreadId::from(borrowed_items.thread_id));
+
+    send_msg = send_msg.reply_to_message_id(MessageId::from(
+        borrowed_items.user_message_id,
+    ));
+
+    send_msg.await?;
+    Ok(())
+}
+
 /// Send a reminder message to the user
 async fn send_reminder(
     env: &Arc<BotEnv>,
@@ -1618,105 +1739,15 @@ async fn send_reminder(
     let days_borrowed =
         (Utc::now().naive_utc() - borrowed_items.created_at).num_days();
 
-    // Check if this will be the final reminder
-    let reminder_count = env.transaction(|conn| {
-        schema::borrowed_items_reminders::table
-            .filter(
-                schema::borrowed_items_reminders::chat_id
-                    .eq(borrowed_items.chat_id),
-            )
-            .filter(
-                schema::borrowed_items_reminders::user_message_id
-                    .eq(borrowed_items.user_message_id),
-            )
-            .filter(schema::borrowed_items_reminders::item_name.eq(item_name))
-            .select(schema::borrowed_items_reminders::reminders_sent)
-            .first::<i32>(conn)
-            .optional()
-    })?;
+    let current_reminder_count = get_reminder_count(env, borrowed_items, item_name)?;
+    let is_final_reminder = is_final_reminder(env, current_reminder_count);
 
-    let current_reminder_count = reminder_count.unwrap_or(0) + 1;
-    let max_reminders = i32::try_from(
-        env.config
-            .borrowed_items
-            .reminders
-            .as_ref()
-            .map_or(3, |r| r.max_reminders),
-    )
-    .unwrap_or(3);
-    let is_final_reminder = current_reminder_count >= max_reminders;
+    let text = build_reminder_text(&user, item_name, days_borrowed, is_final_reminder);
 
-    let (text, send_to_public_topic) = if is_final_reminder {
-        // Final reminder - send publicly to borrowed items topic
-        let text = format!(
-            "� <b>Borrowed Item Reminder</b>\n\n\
-            {} has been using <b>{}</b> from the hackerspace for {} days now.\n\n\
-            Hey! Just a gentle reminder that other residents might also want to use this item. \
-            If you still need it, no worries - just let us know how much longer you'll need it!",
-            html::user_mention(UserId::from(user.id), &user.first_name),
-            item_name,
-            days_borrowed
-        );
-        (text, true)
+    if is_final_reminder {
+        send_public_reminder(bot, env, borrowed_items, &text, &user, item_name, days_borrowed).await?;
     } else {
-        // Regular reminder - send privately as reply
-        let text = format!(
-            "👋 <b>Borrowed Item Reminder</b>\n\n\
-            Hi {}! You've been using <b>{}</b> from the hackerspace for {} days.\n\n\
-            Just wondering - are you still using it, or would it be ready to return? \
-            Other residents might be interested in borrowing it too. Thanks! 😊",
-            user.first_name,
-            item_name,
-            days_borrowed
-        );
-        (text, false)
-    };
-
-    if send_to_public_topic {
-        // Send to the first borrowed_items topic publicly
-        if let Some(borrowed_items_chat) =
-            env.config.telegram.chats.borrowed_items.first()
-        {
-            bot.send_message(borrowed_items_chat.chat, text)
-                .parse_mode(ParseMode::Html)
-                .message_thread_id(borrowed_items_chat.thread)
-                .await?;
-
-            log::info!(
-                "Sent final public reminder for user {} and item '{}' (borrowed {} days ago) to borrowed items topic",
-                user.first_name,
-                item_name,
-                days_borrowed
-            );
-        } else {
-            log::warn!(
-                "No borrowed_items chat configured for public final reminder"
-            );
-            // Fallback to private reminder
-            let mut send_msg = bot
-                .send_message(ChatId::from(borrowed_items.chat_id), text)
-                .parse_mode(ParseMode::Html)
-                .message_thread_id(ThreadId::from(borrowed_items.thread_id));
-
-            send_msg = send_msg.reply_to_message_id(MessageId::from(
-                borrowed_items.user_message_id,
-            ));
-
-            send_msg.await?;
-        }
-    } else {
-        // Send private reminder as reply to original message
-        let mut send_msg = bot
-            .send_message(ChatId::from(borrowed_items.chat_id), text)
-            .parse_mode(ParseMode::Html)
-            .message_thread_id(ThreadId::from(borrowed_items.thread_id));
-
-        send_msg = send_msg.reply_to_message_id(MessageId::from(
-            borrowed_items.user_message_id,
-        ));
-
-        send_msg.await?;
-
+        send_private_reminder(bot, borrowed_items, &text).await?;
         log::info!(
             "Sent private reminder to user {} for item '{}' (borrowed {} days ago)",
             user.first_name,
