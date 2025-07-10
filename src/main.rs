@@ -304,6 +304,12 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
         Arc::clone(&config),
     ));
 
+    set.spawn(modules::borrowed_items::reminder_task(
+        Arc::clone(&bot_env),
+        bot.clone(),
+        cancel.clone(),
+    ));
+
     run_signal_handler(bot_shutdown_token.clone(), cancel.clone());
 
     let first_ctrl_c = tokio::signal::ctrl_c();

@@ -8,6 +8,19 @@ diesel::table! {
         bot_message_id -> Integer,
         user_id -> BigInt,
         items -> Text,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    borrowed_items_reminders (chat_id, user_message_id, item_name) {
+        chat_id -> BigInt,
+        user_message_id -> Integer,
+        user_id -> BigInt,
+        item_name -> Text,
+        reminders_sent -> Integer,
+        last_reminder_sent -> Nullable<Timestamp>,
+        created_at -> Timestamp,
     }
 }
 
@@ -154,6 +167,7 @@ diesel::table! {
 
 diesel::allow_tables_to_appear_in_same_query!(
     borrowed_items,
+    borrowed_items_reminders,
     chat_history,
     dashboard_messages,
     memories,

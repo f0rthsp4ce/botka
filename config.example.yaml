@@ -62,6 +62,19 @@ telegram:
 # Address to to provide HTTP API on.
 server_addr: 127.0.0.1:8080
 
+# Borrowed items configuration
+borrowed_items:
+  # Reminder settings for borrowed items
+  reminders:
+    # How often to check for overdue items (in hours)
+    check_interval_hours: 6
+    # After how many hours to consider an item overdue
+    overdue_after_hours: 48
+    # Maximum number of reminders to send for one item
+    max_reminders: 3
+    # Interval between reminders (in hours)
+    reminder_interval_hours: 48
+
 # Configuration to access external services.
 services:
   # Microtik REST API is used to get list of MAC addresses of the connected
