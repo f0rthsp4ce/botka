@@ -150,24 +150,25 @@ pub async fn watch_loop(env: Arc<BotEnv>, state: Arc<RwLock<State>>, bot: Bot) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::Arc;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_state_singleton() {
         // Test that state() returns the same instance
         let state1 = state();
         let state2 = state();
-        
+
         // They should be the same Arc instance
         assert!(Arc::ptr_eq(&state1, &state2));
-        
+
         // Test that state modification is shared
         {
             let mut guard = state1.write().await;
             guard.0 = Some(std::collections::HashSet::new());
         }
-        
+
         // The change should be visible in state2
         {
             assert!(state2.read().await.0.is_some());

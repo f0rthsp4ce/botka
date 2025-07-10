@@ -17,8 +17,8 @@ use tokio::sync::RwLock;
 
 use crate::common::{filter_command, BotCommandsExt, BotEnv, UpdateHandler};
 use crate::models::NewTempOpenToken;
-use crate::utils::{BotExt, MessageExt};
 use crate::modules::mac_monitoring::State;
+use crate::utils::{BotExt, MessageExt};
 
 #[derive(Clone, BotCommands, BotCommandsExt!)]
 #[command(rename_rule = "snake_case")]
@@ -33,10 +33,18 @@ pub enum Commands {
 
 pub fn command_handler() -> UpdateHandler {
     filter_command::<Commands>().endpoint(
-        |bot: Bot, env: Arc<BotEnv>, msg: Message, mac_monitoring_state: Arc<RwLock<State>>, cmd: Commands| async move {
+        |bot: Bot,
+         env: Arc<BotEnv>,
+         msg: Message,
+         mac_monitoring_state: Arc<RwLock<State>>,
+         cmd: Commands| async move {
             match cmd {
-                Commands::Open => cmd_open(bot, env, msg, mac_monitoring_state).await,
-                Commands::TempOpen => cmd_temp_open(bot, env, msg, mac_monitoring_state).await,
+                Commands::Open => {
+                    cmd_open(bot, env, msg, mac_monitoring_state).await
+                }
+                Commands::TempOpen => {
+                    cmd_temp_open(bot, env, msg, mac_monitoring_state).await
+                }
             }
         },
     )
@@ -44,9 +52,14 @@ pub fn command_handler() -> UpdateHandler {
 
 pub fn callback_handler() -> UpdateHandler {
     dptree::filter_map(filter_callbacks).endpoint(
-        |bot: Bot, env: Arc<BotEnv>, callback: CallbackQuery, mac_monitoring_state: Arc<RwLock<State>>, action: CallbackAction| async move {
-            handle_callback(bot, env, callback, mac_monitoring_state, action).await
-        }
+        |bot: Bot,
+         env: Arc<BotEnv>,
+         callback: CallbackQuery,
+         mac_monitoring_state: Arc<RwLock<State>>,
+         action: CallbackAction| async move {
+            handle_callback(bot, env, callback, mac_monitoring_state, action)
+                .await
+        },
     )
 }
 
@@ -97,8 +110,8 @@ async fn cmd_open(
                     .active_users()
                     .is_some_and(|set| set.contains(&inviter_uid))
                 {
-                    log::debug!("Guest {} ({}) blocked: inviter {} not on Wi-Fi. Active users: {:?}", 
-                        user.full_name(), user.id, inviter_uid, 
+                    log::debug!("Guest {} ({}) blocked: inviter {} not on Wi-Fi. Active users: {:?}",
+                        user.full_name(), user.id, inviter_uid,
                         mac_monitoring_state.read().await.active_users().map(|set| set.len()));
                     bot.reply_message(&msg, "The resident who invited you is not currently on Wi-Fi. Door cannot be opened.").await?;
                     return Ok(());
@@ -147,17 +160,22 @@ async fn cmd_temp_open(
     // Check Wi-Fi presence (active MAC)
     let is_online = {
         let guard = mac_monitoring_state.read().await;
-        if let Some(set) = guard.active_users() { set.contains(&user.id) } else {
-            log::info!("MAC monitoring state not initialized for user {} ({})", 
-                user.full_name(), user.id);
+        if let Some(set) = guard.active_users() {
+            set.contains(&user.id)
+        } else {
+            log::info!(
+                "MAC monitoring state not initialized for user {} ({})",
+                user.full_name(),
+                user.id
+            );
             // Don't allow access if monitoring system is not initialized yet
             bot.reply_message(&msg, "MAC monitoring system is initializing. Please try again in a few moments.").await?;
             return Ok(());
         }
     };
     if !is_online {
-        log::debug!("User {} ({}) blocked from temp_open: not on Wi-Fi. Active users: {:?}", 
-            user.full_name(), user.id, 
+        log::debug!("User {} ({}) blocked from temp_open: not on Wi-Fi. Active users: {:?}",
+            user.full_name(), user.id,
             mac_monitoring_state.read().await.active_users().map(|set| set.len()));
         bot.reply_message(&msg, "You must be connected to the hackerspace Wi-Fi to generate a temporary access link.").await?;
         return Ok(());
@@ -276,9 +294,14 @@ async fn handle_callback(
             // Check Wi-Fi presence (active MAC)
             let is_online = {
                 let guard = mac_monitoring_state.read().await;
-                if let Some(set) = guard.active_users() { set.contains(&callback.from.id) } else {
-                    log::info!("MAC monitoring state not initialized for user {} ({})", 
-                        callback.from.full_name(), callback.from.id);
+                if let Some(set) = guard.active_users() {
+                    set.contains(&callback.from.id)
+                } else {
+                    log::info!(
+                        "MAC monitoring state not initialized for user {} ({})",
+                        callback.from.full_name(),
+                        callback.from.id
+                    );
                     bot.answer_callback_query(&callback.id)
                         .text("MAC monitoring system is initializing. Please try again in a few moments.")
                         .show_alert(true)
@@ -287,8 +310,8 @@ async fn handle_callback(
                 }
             };
             if !is_online {
-                log::debug!("User {} ({}) blocked from temp_open callback: not on Wi-Fi. Active users: {:?}", 
-                    callback.from.full_name(), callback.from.id, 
+                log::debug!("User {} ({}) blocked from temp_open callback: not on Wi-Fi. Active users: {:?}",
+                    callback.from.full_name(), callback.from.id,
                     mac_monitoring_state.read().await.active_users().map(|set| set.len()));
                 bot.answer_callback_query(&callback.id)
                     .text("You must be connected to the hackerspace Wi-Fi to generate a temporary access link.")
@@ -357,14 +380,14 @@ async fn handle_callback(
             if !is_resident {
                 if let Some(resident_id) = guest_can_open(&env, user_id) {
                     if let Some(inviter_uid) = i64_to_user_id(resident_id) {
-                                                  if !mac_monitoring_state
-                              .read()
-                              .await
-                              .active_users()
-                              .is_some_and(|set| set.contains(&inviter_uid))
+                        if !mac_monitoring_state
+                            .read()
+                            .await
+                            .active_users()
+                            .is_some_and(|set| set.contains(&inviter_uid))
                         {
-                            log::debug!("Guest {} ({}) blocked: inviter {} not on Wi-Fi. Active users: {:?}", 
-                                callback.from.full_name(), callback.from.id, inviter_uid, 
+                            log::debug!("Guest {} ({}) blocked: inviter {} not on Wi-Fi. Active users: {:?}",
+                                callback.from.full_name(), callback.from.id, inviter_uid,
                                 mac_monitoring_state.read().await.active_users().map(|set| set.len()));
                             bot.answer_callback_query(&callback.id)
                                 .text("The resident who invited you is not currently on Wi-Fi. Door cannot be opened.")

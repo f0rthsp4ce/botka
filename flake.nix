@@ -12,9 +12,19 @@
     flake-utils.url = "github:numtide/flake-utils"; # Added flake-utils for convenience
   };
 
-  outputs = { self, nixpkgs, crane, nix-filter, rust-overlay, flake-utils, ... }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      crane,
+      nix-filter,
+      rust-overlay,
+      flake-utils,
+      ...
+    }:
     # Using flake-utils for perSystem boilerplate
-    flake-utils.lib.eachDefaultSystem (system:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         # Import nixpkgs with the rust-overlay applied
         pkgs = import nixpkgs {
@@ -30,7 +40,11 @@
         };
 
         # Define base runtime dependencies
-        baseRuntimeDeps = [ pkgs.bash pkgs.imagemagick pkgs.sqlite ];
+        baseRuntimeDeps = [
+          pkgs.bash
+          pkgs.imagemagick
+          pkgs.sqlite
+        ];
 
         # Define Python dependencies
         pythonDeps = pkgs.python3.withPackages (p: [
@@ -68,19 +82,28 @@
         };
 
         # Combine all runtime dependencies
-        allRuntimeDeps = baseRuntimeDeps ++ [ residents-admin-table residents-timeline ];
+        allRuntimeDeps = baseRuntimeDeps ++ [
+          residents-admin-table
+          residents-timeline
+        ];
 
         # Define build dependencies for the Rust package
-        buildDeps = [ pkgs.openssl pkgs.perl pkgs.pkg-config pkgs.sqlite ];
+        buildDeps = [
+          pkgs.openssl
+          pkgs.perl
+          pkgs.pkg-config
+          pkgs.sqlite
+        ];
 
         # Calculate the revision string
-        revision = self.lastModifiedDate or "nodate" + "-"
-          + self.shortRev or self.dirtyShortRev or "unknown";
+        revision =
+          self.lastModifiedDate or "nodate" + "-" + self.shortRev or self.dirtyShortRev or "unknown";
 
         # Initialize crane library using the standard function
         craneLib = crane.mkLib pkgs; # Use mkLib provided by crane flake
 
-      in rec {
+      in
+      rec {
         # Formatter for nix files
         formatter = pkgs.nixfmt-rfc-style;
 
@@ -101,8 +124,12 @@
         packages.f0bot-unwrapped = craneLib.buildPackage {
           src = nix-filter.lib {
             root = ./.;
-            include =
-              [ "src" "Cargo.toml" "Cargo.lock" "config.example.yaml" ];
+            include = [
+              "src"
+              "Cargo.toml"
+              "Cargo.lock"
+              "config.example.yaml"
+            ];
           };
           # Pass the specific rust toolchain to crane here
           rustToolchain = rustDev;
@@ -124,8 +151,14 @@
           tag = revision; # Use revision for the tag for better tracking
           copyToRoot = pkgs.buildEnv {
             name = "image-root";
-            paths = [ packages.f0bot pkgs.cacert ];
-            pathsToLink = [ "/bin" "/etc" ];
+            paths = [
+              packages.f0bot
+              pkgs.cacert
+            ];
+            pathsToLink = [
+              "/bin"
+              "/etc"
+            ];
           };
           config = {
             Cmd = [ "/bin/f0bot" ];
