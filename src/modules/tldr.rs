@@ -78,11 +78,13 @@ async fn handle_command(
     // The helper returns newest first; we want chronological order for summarizer
     history.reverse();
 
-    // Apply message count filter (take last N)
-    if let Some(limit) = filter.messages {
-        if history.len() > limit as usize {
-            history = history[history.len() - limit as usize..].to_vec();
-        }
+    // Apply message count filter (take last N) WITH HARD CAP OF 500
+    // Determine the effective limit: requested value or 500 (whichever is smaller).
+    // If the user did not specify any limit, default to the hard cap of 500.
+    let effective_limit: u32 = filter.messages.unwrap_or(500).min(500);
+
+    if history.len() > effective_limit as usize {
+        history = history[history.len() - effective_limit as usize..].to_vec();
     }
 
     if history.is_empty() {
