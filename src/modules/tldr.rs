@@ -15,9 +15,10 @@ use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
 
 use crate::common::{filter_command, BotCommandsExt, BotEnv, UpdateHandler};
-use crate::db::{DbChatId, DbThreadId, DbUserId};
+use crate::db::DbUserId;
 use crate::models::{ChatHistoryEntry, TgUser};
-use crate::utils::{BotExt, GENERAL_THREAD_ID};
+use crate::modules::nlp::memory::get_chat_history;
+use crate::utils::BotExt;
 
 /// JSON filter returned by LLM for TLDR requests.
 #[derive(Debug, Deserialize)]
@@ -64,8 +65,25 @@ async fn handle_command(
         convert_query_to_filter(&env, user_query).await?
     };
 
-    // Fetch messages from DB according to filter (current chat/thread).
-    let history = fetch_messages(&env, &msg, &filter)?;
+    // Fetch chat history via NLP helper
+    let mut history = get_chat_history(&env, msg.chat.id, msg.thread_id)?;
+
+    // Apply time filter
+    if let Some(hours) = filter.time {
+        let since =
+            (Utc::now() - Duration::hours(i64::from(hours))).naive_utc();
+        history.retain(|e| e.timestamp >= since);
+    }
+
+    // The helper returns newest first; we want chronological order for summarizer
+    history.reverse();
+
+    // Apply message count filter (take last N)
+    if let Some(limit) = filter.messages {
+        if history.len() > limit as usize {
+            history = history[history.len() - limit as usize..].to_vec();
+        }
+    }
 
     if history.is_empty() {
         bot.reply_message(&msg, "No messages found for summarization.").await?;
@@ -75,8 +93,12 @@ async fn handle_command(
     // Second step: summarize collected messages using LLM.
     let summary = summarize_messages(&env, &history).await?;
 
-    // Send summary back to the thread.
-    bot.reply_message(&msg, summary).await?;
+    let summary_trimmed = summary.trim();
+    if summary_trimmed.is_empty() {
+        bot.reply_message(&msg, "Failed to build summary.").await?;
+    } else {
+        bot.reply_message(&msg, summary_trimmed).await?;
+    }
 
     Ok(())
 }
@@ -141,55 +163,17 @@ async fn convert_query_to_filter(
     Ok(filter)
 }
 
-/// Fetch messages from `chat_history` table according to filter.
-fn fetch_messages(
-    env: &Arc<BotEnv>,
-    msg: &Message,
-    filter: &TldrFilter,
-) -> Result<Vec<ChatHistoryEntry>> {
-    let chat_id = msg.chat.id;
-    let thread_id = msg.thread_id.unwrap_or(GENERAL_THREAD_ID);
-
-    env.transaction(|conn| {
-        let mut query = crate::schema::chat_history::table
-            .filter(
-                crate::schema::chat_history::chat_id
-                    .eq(DbChatId::from(chat_id)),
-            )
-            .filter(
-                crate::schema::chat_history::thread_id
-                    .eq(DbThreadId::from(thread_id)),
-            )
-            .into_boxed::<diesel::sqlite::Sqlite>();
-
-        if let Some(hours) = filter.time {
-            let since =
-                (Utc::now() - Duration::hours(i64::from(hours))).naive_utc();
-            query =
-                query.filter(crate::schema::chat_history::timestamp.ge(since));
-        }
-
-        query = query.order(crate::schema::chat_history::timestamp.desc());
-
-        if let Some(limit) = filter.messages {
-            query = query.limit(i64::from(limit));
-        }
-
-        query.load::<ChatHistoryEntry>(conn)
-    })
-    .map(|mut v| {
-        // Reverse to chronological order
-        v.reverse();
-        v
-    })
-    .context("Failed to fetch messages")
-}
+// Removed custom DB query. History retrieval handled via NLP module.
 
 /// Summarize collected messages using LLM.
 async fn summarize_messages(
     env: &Arc<BotEnv>,
     history: &[ChatHistoryEntry],
 ) -> Result<String> {
+    if history.is_empty() {
+        anyhow::bail!("No messages to summarize");
+    }
+
     // Map user IDs to display names once to avoid multiple DB queries
     let user_map: HashMap<DbUserId, String> = {
         let user_ids: Vec<DbUserId> =
@@ -235,6 +219,10 @@ async fn summarize_messages(
         })
         .collect::<Vec<_>>()
         .join("\n");
+
+    if transcript.trim().is_empty() {
+        anyhow::bail!("No messages to summarize");
+    }
 
     const SYSTEM_PROMPT: &str = "You are an assistant that produces a concise TL;DR summary (in the same language as the messages) of the following Telegram thread messages. Focus on the key discussion points and decisions. Return no more than 8 sentences.";
 
