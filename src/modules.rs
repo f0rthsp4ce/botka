@@ -15,6 +15,7 @@ pub mod polls;
 pub mod rename_closed_topics;
 pub mod resident_tracker;
 pub mod tg_scraper;
+pub mod tldr;
 pub mod updates;
 pub mod userctl;
 pub mod vortex_of_doom;
