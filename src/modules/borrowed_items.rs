@@ -1714,9 +1714,8 @@ async fn send_private_reminder(
         .parse_mode(ParseMode::Html)
         .message_thread_id(ThreadId::from(borrowed_items.thread_id));
 
-    send_msg = send_msg.reply_to_message_id(MessageId::from(
-        borrowed_items.user_message_id,
-    ));
+    send_msg = send_msg
+        .reply_to_message_id(MessageId::from(borrowed_items.user_message_id));
 
     send_msg.await?;
     Ok(())
@@ -1739,13 +1738,24 @@ async fn send_reminder(
     let days_borrowed =
         (Utc::now().naive_utc() - borrowed_items.created_at).num_days();
 
-    let current_reminder_count = get_reminder_count(env, borrowed_items, item_name)?;
+    let current_reminder_count =
+        get_reminder_count(env, borrowed_items, item_name)?;
     let is_final_reminder = is_final_reminder(env, current_reminder_count);
 
-    let text = build_reminder_text(&user, item_name, days_borrowed, is_final_reminder);
+    let text =
+        build_reminder_text(&user, item_name, days_borrowed, is_final_reminder);
 
     if is_final_reminder {
-        send_public_reminder(bot, env, borrowed_items, &text, &user, item_name, days_borrowed).await?;
+        send_public_reminder(
+            bot,
+            env,
+            borrowed_items,
+            &text,
+            &user,
+            item_name,
+            days_borrowed,
+        )
+        .await?;
     } else {
         send_private_reminder(bot, borrowed_items, &text).await?;
         log::info!(
