@@ -226,7 +226,7 @@ async fn summarize_messages(
         anyhow::bail!("No messages to summarize");
     }
 
-    const SYSTEM_PROMPT: &str = "You are an assistant that produces a concise TL;DR summary (in the same language as the messages) of the following Telegram thread messages. Focus on the key discussion points and decisions. Return no more than 8 sentences.";
+    const SYSTEM_PROMPT: &str = "You are an assistant that produces a concise TL;DR summary (in the same language as the messages) of the following Telegram thread messages. Focus on the key discussion points and decisions. Return no more than 10 sentences. Mention the most important points and decisions. Do not mention the user names with @.";
 
     // Choose summarization model: use the last (most capable) model from config.nlp.models if present, else default openai model.
     let model = env
