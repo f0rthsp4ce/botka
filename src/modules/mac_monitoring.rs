@@ -30,7 +30,9 @@ impl State {
 }
 
 pub fn state() -> Arc<RwLock<State>> {
-    Arc::new(RwLock::new(State::default()))
+    use std::sync::OnceLock;
+    static STATE: OnceLock<Arc<RwLock<State>>> = OnceLock::new();
+    Arc::clone(STATE.get_or_init(|| Arc::new(RwLock::new(State::default()))))
 }
 
 async fn mac_monitoring(
@@ -143,5 +145,40 @@ pub async fn watch_loop(env: Arc<BotEnv>, state: Arc<RwLock<State>>, bot: Bot) {
             log::error!("Failed to get leases: {e}");
         }
         sleep(Duration::from_secs(60)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_state_singleton() {
+        // Test that state() returns the same instance
+        let state1 = state();
+        let state2 = state();
+
+        // They should be the same Arc instance
+        assert!(Arc::ptr_eq(&state1, &state2));
+
+        // Test that state modification is shared
+        {
+            let mut guard = state1.write().await;
+            guard.0 = Some(std::collections::HashSet::new());
+        }
+
+        // The change should be visible in state2
+        {
+            assert!(state2.read().await.0.is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_active_users_none_initially() {
+        // Test that active_users returns None initially
+        let test_state = Arc::new(RwLock::new(State::default()));
+        assert!(test_state.read().await.active_users().is_none());
     }
 }
