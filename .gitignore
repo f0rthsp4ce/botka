@@ -7,3 +7,4 @@
 result
 result-*
 /*_cache/
+*.sqlite3*

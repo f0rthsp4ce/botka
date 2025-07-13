@@ -250,7 +250,7 @@ fn filter_callbacks(callback: CallbackQuery) -> Option<CallbackAction> {
 }
 
 /// Handle callback queries for door opening confirmation
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 async fn handle_callback(
     bot: Bot,
     env: Arc<BotEnv>,

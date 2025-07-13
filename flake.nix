@@ -184,7 +184,6 @@
             })
             pkgs.bun
             pkgs.just # Task runner
-            pkgs.mold # Faster linker
             pkgs.nodejs # For residents-timeline dev
             pkgs.prefetch-npm-deps # For updating npmDepsHash
 
