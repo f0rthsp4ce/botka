@@ -323,7 +323,7 @@ fn filter_messages_in_topic(env: Arc<BotEnv>, msg: Message) -> bool {
 }
 
 /// Handles incoming messages, classifying them and taking appropriate actions
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 async fn handle_message(
     bot: Bot,
     env: Arc<BotEnv>,
@@ -860,7 +860,7 @@ pub fn register_metrics() {
 }
 
 /// Uses `OpenAI` to classify messages about taking or returning items
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 async fn classify_openai(
     bot: Bot,
     env: Arc<BotEnv>,
@@ -1336,7 +1336,7 @@ fn has_common_words(s1: &str, s2: &str) -> bool {
 ///
 /// # Returns
 /// Vector of pairs (`returned_idx`, `unreturned_idx`) representing matches between items
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 async fn match_returned_items_with_llm(
     env: &Arc<BotEnv>,
     returned_items: &[String],

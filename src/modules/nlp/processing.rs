@@ -398,7 +398,7 @@ pub async fn handle_nlp_message(
 }
 
 /// Process message with LLM using the function calling protocol
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 pub async fn process_with_function_calling(
     bot: &Bot,
     env: &Arc<BotEnv>,
