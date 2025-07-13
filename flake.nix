@@ -32,12 +32,8 @@
           overlays = [ rust-overlay.overlays.default ];
         };
 
-        # Use rust-overlay to get the specific nightly toolchain
-        rustDev = pkgs.rust-bin.nightly.latest.default.override {
-          extensions = [
-            "rust-src"
-          ];
-        };
+        # Use rust-overlay to get the pinned toolchain defined in `rust-toolchain.toml`
+        rustDev = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
         # Define base runtime dependencies
         baseRuntimeDeps = [
