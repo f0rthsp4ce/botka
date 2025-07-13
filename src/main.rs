@@ -210,6 +210,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::ldap::command_handler())
                     .branch(modules::butler::command_handler())
                     .branch(modules::butler::guest_token_handler())
+                    .branch(modules::tldr::command_handler())
                     .branch(modules::nlp::command_handler())
                     .inspect_err(modules::nlp::store_message)
                     .branch(modules::nlp::message_handler())
