@@ -113,6 +113,7 @@ fn filter_callbacks(callback: CallbackQuery) -> Option<CallbackAction> {
 }
 
 /// Handle callback queries for door opening confirmation
+#[allow(clippy::cognitive_complexity)]
 async fn handle_callback(
     bot: Bot,
     env: Arc<BotEnv>,
