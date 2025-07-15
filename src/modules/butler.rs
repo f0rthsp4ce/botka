@@ -77,6 +77,7 @@ fn guest_can_open(env: &Arc<BotEnv>, user_id: i64) -> Option<i64> {
     t::temp_open_tokens
         .filter(t::guest_tg_id.eq(user_id))
         .filter(t::expires_at.gt(now))
+        .filter(t::used_at.is_null())
         .first::<crate::models::TempOpenToken>(&mut *env.conn())
         .optional()
         .ok()
@@ -291,8 +292,7 @@ async fn handle_callback(
                 let guard = mac_monitoring_state.read().await;
                 guard
                     .active_users()
-                    .map(|set| set.contains(&callback.from.id))
-                    .unwrap_or(false)
+                    .is_some_and(|set| set.contains(&callback.from.id))
             };
 
             // Generate token and create link
@@ -325,10 +325,10 @@ async fn handle_callback(
             });
 
             // Update the message with the generated link
-            let warning = if !is_online {
-                "\n\n⚠️ You are not detected on the hackerspace Wi-Fi. The link will only work if you are at the space or have registered your device’s MAC address with /userctl --add-mac."
-            } else {
+            let warning = if is_online {
                 ""
+            } else {
+                "\n\n⚠️ You are not detected on the hackerspace Wi-Fi. The link will only work if you are at the space or have registered your device’s MAC address with /userctl --add-mac."
             };
             let text = format!("✅ Temporary guest access link (valid for {} min):\n<code>{}</code>{}", duration.num_minutes(), link, warning);
             let button = InlineKeyboardMarkup::new(vec![vec![
@@ -341,13 +341,13 @@ async fn handle_callback(
                 .await?;
 
             // Send callback acknowledgment, include warning if offline.
-            let ack_text = if !is_online {
-                format!("Link generated (valid for {} min). ⚠️ Not on hackerspace Wi-Fi.", duration.num_minutes())
-            } else {
+            let ack_text = if is_online {
                 format!(
                     "Temporary access link generated (valid for {} min)",
                     duration.num_minutes()
                 )
+            } else {
+                format!("Link generated (valid for {} min). ⚠️ Not on hackerspace Wi-Fi.", duration.num_minutes())
             };
             bot.answer_callback_query(&callback.id)
                 .text(ack_text)
@@ -363,9 +363,11 @@ async fn handle_callback(
             );
         }
         CallbackAction::ConfirmOpen => {
-            // For guests, check if inviter is on Wi-Fi
+            // We'll keep track of inviter (resident) id if this is a guest.
+            let mut inviter_resident_id: Option<i64> = None;
             if !is_resident {
-                if let Some(resident_id) = guest_can_open(&env, user_id) {
+                inviter_resident_id = guest_can_open(&env, user_id);
+                if let Some(resident_id) = inviter_resident_id {
                     if let Some(inviter_uid) = i64_to_user_id(resident_id) {
                         if !mac_monitoring_state
                             .read()
@@ -395,6 +397,7 @@ async fn handle_callback(
                     );
                 }
             }
+            // Note: previous block replaced with the one that sets inviter_resident_id
             if is_resident {
                 log::info!(
                     "Resident {} ({}) opened the door via button",
@@ -437,6 +440,36 @@ async fn handle_callback(
                     bot.answer_callback_query(&callback.id)
                         .text("Door opened successfully!")
                         .await?;
+
+                    // If this was a guest, mark the token as used and notify the resident.
+                    if !is_resident {
+                        if let Some(resident_id) = inviter_resident_id {
+                            use crate::schema::temp_open_tokens::dsl as t;
+                            let now = chrono::Utc::now().naive_utc();
+                            // Mark token(s) as used.
+                            env.transaction(|conn| {
+                                diesel::update(
+                                    t::temp_open_tokens
+                                        .filter(t::guest_tg_id.eq(user_id))
+                                        .filter(t::used_at.is_null()),
+                                )
+                                .set(t::used_at.eq(now))
+                                .execute(conn)
+                            })?;
+
+                            // Notify inviter.
+                            let notify_text = format!(
+                                "🚪 Your guest {} opened the door using their temporary link.",
+                                callback.from.full_name()
+                            );
+                            let _ = bot
+                                .send_message(
+                                    teloxide::types::ChatId(resident_id),
+                                    notify_text,
+                                )
+                                .await;
+                        }
+                    }
                 }
                 Err(e) => {
                     log::error!("Failed to open door: {e}");
@@ -516,7 +549,7 @@ fn generate_token() -> String {
         .collect()
 }
 
-/// Handler for guest activation via /start temp_open<token>
+/// Handler for guest activation via /start `temp_open`<token>
 pub fn guest_token_handler() -> crate::common::UpdateHandler {
     use std::sync::Arc;
 
