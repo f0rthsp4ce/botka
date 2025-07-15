@@ -1,0 +1,28 @@
+---
+alwaysApply: true
+---
+# Project Structure
+
+This project is a Telegram bot written in Rust using the [Teloxide](https://teloxide.rs/) framework.
+
+## Key Directories & Files
+
+- `[src/main.rs](mdc:src/main.rs)`: Application entry point. Initializes logging, parses CLI args, loads configuration, builds the `dptree` dispatcher, and starts background tasks & web server.
+- `[src/modules/](mdc:src/modules/)`: Feature-oriented modules. Each file encapsulates a single area of bot functionality. See `[modules.mdc](mdc:.cursor/rules/modules.mdc)` for an index.
+- `[src/utils/](mdc:src/utils/)`: Shared helper code (Diesel helpers, Teloxide extensions, Mikrotik client, etc.).
+- `[src/common.rs](mdc:src/common.rs)`: Defines `BotEnv`, command access system, and other cross-cutting helpers.
+- `[src/db.rs](mdc:src/db.rs)`, `[src/models.rs](mdc:src/models.rs)`, `[src/schema.rs](mdc:src/schema.rs)`: Database layer built on Diesel. `schema.rs` is generated via `just schema`.
+- `[src/web_srv.rs](mdc:src/web_srv.rs)`: Runs the Salvo HTTP server that powers the dashboard API.
+- `[src/tracing_proxy.rs](mdc:src/tracing_proxy.rs)`: Local proxy that records all Telegram API traffic to `trace.jsonl` for debugging.
+- `[migrations/](mdc:migrations/)`: Diesel migrations.
+- `[Justfile](mdc:Justfile)`: Developer task shortcuts (formatting, linting, schema regeneration, etc.).
+- `[config.example.yaml](mdc:config.example.yaml)`: Reference configuration passed to the bot via `bot <config.yaml>`.
+
+```mermaid
+flowchart TD;
+  Main[src/main.rs] --> Dispatcher;
+  Dispatcher --> Modules;
+  Dispatcher --> Utils;
+  Modules --> DB[(Database)];
+  Utils --> DB;
+```

@@ -1,0 +1,40 @@
+---
+alwaysApply: true
+---
+# Tooling & Commands
+
+The project relies on the **Just** command runner. All common tasks are defined in `[Justfile](mdc:Justfile)`.
+
+## Formatting
+Run
+```bash
+just fmt
+```
+This invokes:
+* `cargo fmt` — Rust formatting
+* `nixfmt` — formats `flake.nix`
+* `ruff format` — Python formatting
+* `prettier` — YAML / JSON / Markdown / TypeScript formatting
+
+## Linting & Tests
+Run
+```bash
+just check
+```
+This sequentially performs:
+1. `deadnix --fail .` – remove unused Nix expressions
+2. `statix check .` – Nix style linter
+3. `mypy .` – Python type checking
+4. `ruff check .` – Python linting
+5. `cargo clippy --all-targets -- --deny warnings --cfg clippy` – Rust linting (no warnings allowed)
+6. `cargo test` – Runs the full Rust test suite
+
+## Database helpers
+```bash
+just schema   # Regenerate src/schema.rs from Diesel migrations
+```
+
+## Misc
+```bash
+just hashes   # Recalculate npm hash for residents-timeline frontend
+```

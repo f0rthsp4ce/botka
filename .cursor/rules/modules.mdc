@@ -1,0 +1,32 @@
+---
+alwaysApply: true
+---
+# Bot Modules
+
+The bot's functionality is split into modules located in `[src/modules/](mdc:src/modules/)`. Each module is responsible for a specific feature.
+
+- **`ask_to_visit.rs`**: Handles requests from users asking to visit someone.
+- **`basic.rs`**: Implements basic informational commands like `/help`, `/residents`, `/status`, and `/version`. It also includes commands that execute external scripts to generate and display data, such as `/residents_admin_table` and `/residents_timeline`.
+- **`borrowed_items.rs`**: A full-featured system for tracking borrowed items. It uses NLP (via OpenAI) to parse user messages, allows users to mark items as returned via callback buttons, and sends automatic reminders for overdue items.
+- **`broadcast.rs`**: Allows bot admins to broadcast messages to all residential chats.
+- **`butler.rs`**: Manages guest access by generating temporary tokens. This likely integrates with a physical access control system.
+- **`camera.rs`**: Provides commands to get snapshots from configured ESP-CAMs (e.g., `/racovina_cam`).
+- **`dashboard/`**: Contains the logic for the web dashboard, served via the `web_srv.rs` component.
+- **`forward_topic_pins.rs`**: A utility module that automatically forwards pinned messages from one chat to another, useful for announcements.
+- **`ldap.rs`**: Provides commands to interact with an LDAP server for user management (`/ldap_search`, `/ldap_whois`).
+- **`mac_monitoring.rs`**: Monitors the network (likely via a Mikrotik router) to see which residents' devices are currently active and reports this in the `/status` command.
+- **`needs.rs`**: A system for residents to post "needs" (e.g., "I need a cup of sugar"). It pins these needs to a specific chat and allows others to claim them by marking them as "bought".
+- **`nlp/`**: The Natural Language Processing subsystem, which uses OpenAI.
+  - `[nlp/mod.rs](mdc:src/modules/nlp/mod.rs)`: Main module file, wires up the message handlers.
+  - `[nlp/processing.rs](mdc:src/modules/nlp/processing.rs)`: Core logic for processing messages, deciding whether to respond, and interacting with OpenAI.
+  - `[nlp/memory.rs](mdc:src/modules/nlp/memory.rs)`: Handles long-term memory for conversations, storing summaries of past interactions in the database.
+  - `[nlp/classification.rs](mdc:src/modules/nlp/classification.rs)`: Classifies user messages to decide if they are relevant for an NLP response.
+- **`polls.rs`**: Manages polls in chats, tracking who has voted.
+- **`rename_closed_topics.rs`**: Automatically renames closed forum topics, adding a specific emoji or prefix.
+- **`resident_tracker.rs`**: Tracks when residents are seen in chats and updates their `last_seen` status in the database.
+- **`tg_scraper.rs`**: Scrapes all incoming messages and stores them in the `chat_history` table for analysis.
+- **`tldr.rs`**: Provides "Too Long; Didn't Read" summaries of long messages or conversations, likely using OpenAI.
+- **`updates.rs`**: Handles periodic background tasks, such as sending reminders for borrowed items.
+- **`userctl.rs`**: Administrative commands for managing users, such as adding or removing residents (`/add_resident`, `/del_resident`).
+- **`vortex_of_doom.rs`**: A scheduled feature that posts a message (and possibly a camera image) to a specific chat based on a cron-like schedule.
+- **`welcome.rs`**: Welcomes new users to a chat, often with a message fetched from a Wiki.js page.

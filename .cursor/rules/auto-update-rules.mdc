@@ -1,0 +1,20 @@
+---
+alwaysApply: true
+---
+
+# Cursor Rule Maintenance
+
+Whenever the assistant (or developer) introduces a new feature, refactor, or otherwise changes the behaviour of existing code, the assistant **MUST** ensure that the Cursor rules remain accurate and up-to-date:
+
+1. **Check** if the change warrants a new rule or modification of an existing rule.
+2. If required, **create** or **update** a rule file under `.cursor/rules/`:
+   - Use the `.mdc` extension.
+   - Include proper front-matter (`alwaysApply`, `description`, `globs`) as appropriate.
+   - Reference relevant source files using `[filename](mdc:path/to/filename)` syntax.
+3. The rule update MUST be included in the same set of code edits as the feature/change.
+4. When modifying a rule, preserve unrelated content and only adjust the necessary parts.
+5. Rule updates must follow the guidelines outlined in the repository-level "Cursor Rules Instructions".
+
+Failure to perform these steps will be considered a violation of the project's coding standards.
+
+DO NOT use write to file tool for updating cursor rules files, use bash commands instead. This is required because of apply model bug when working with cursor rules.

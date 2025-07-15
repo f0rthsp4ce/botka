@@ -1,0 +1,96 @@
+---
+alwaysApply: true
+---
+# Common Patterns
+
+## Teloxide Handlers and `dptree`
+
+The bot uses `teloxide`'s `dptree` dispatcher to route incoming updates.
+
+- **Handler Functions**: Handlers are functions that take the bot, the update, and a set of dependencies (like `BotEnv`) as arguments and return `anyhow::Result<()>`.
+- **Module Structure**: Each module in `[src/modules/](mdc:src/modules/)` typically defines one or more handler functions (e.g., `command_handler`, `message_handler`, `callback_handler`).
+- **Chaining Handlers**: In `[src/main.rs](mdc:src/main.rs)`, these handlers are chained together using `.branch()` on the `dptree` builder. The order of branching is important.
+
+Example of a command handler in a module:
+```rust
+// in src/modules/some_module.rs
+use crate::common::{BotEnv, Result};
+use teloxide::prelude::*;
+// ...
+
+pub fn command_handler() -> Handler<'static, DependencyMap, Result, DpState> {
+    teloxide::filter_command::<MyCommand, _>()
+        .endpoint(handle_commands)
+}
+
+async fn handle_commands(
+    bot: Bot,
+    env: Arc<BotEnv>,
+    msg: Message,
+    cmd: MyCommand,
+) -> Result {
+    // ... handler logic
+    Ok(())
+}
+```
+
+## State Management
+
+### Global State (`BotEnv`)
+Most of the shared state and application-wide resources are available in the `[common::BotEnv](mdc:src/common.rs)` struct. This includes:
+- `Mutex<SqliteConnection>` for database access.
+- `reqwest::Client` for making HTTP requests.
+- The application `Config`.
+- `async_openai::Client` for OpenAI integration.
+- `Arc<tokio::sync::Mutex<LdapClientState>>` for the LDAP client.
+
+An `Arc<BotEnv>` is passed as a dependency to almost all handlers.
+
+### Module-specific State
+Some modules have their own state, which is managed separately and injected into the `dptree` dispatcher using `.dependencies(...)` in `[src/main.rs](mdc:src/main.rs)`.
+
+For example, see `modules::mac_monitoring::state()` and `modules::welcome::state()`. This state is typically a struct wrapped in an `Arc<RwLock<...>>` or similar to allow for shared, mutable access across handlers.
+
+## Declarative Command Access Rules
+
+The project uses a custom macro `[BotCommandsExt!](mdc:src/common.rs)` to define access rules directly on `teloxide` command enums.
+
+This allows specifying who can use a command and where:
+- `#[custom(admin = true)]`: Only bot admins.
+- `#[custom(resident = true)]`: Only residents.
+- `#[custom(in_private = true/false)]`: Control usage in private chats.
+- `#[custom(in_group = true/false)]`: Control usage in group chats.
+
+The `[common::filter_command](mdc:src/common.rs)` function then enforces these rules automatically.
+
+Example from `[src/modules/basic.rs](mdc:src/modules/basic.rs)`:
+```rust
+#[derive(Clone, BotCommands, BotCommandsExt!)]
+#[command(rename_rule = "snake_case")]
+pub enum Commands {
+    #[command(description = "list residents.")]
+    #[custom(resident = true)] // This command can only be run by residents
+    Residents,
+
+    #[command(description = "show status.")]
+    Status, // This command has default (public) access
+}
+```
+
+## Database Interaction
+
+### Diesel and Newtypes
+The project uses `diesel` for database operations. A key pattern is the use of **newtypes** for Telegram IDs (`DbUserId`, `DbChatId`, etc.) defined in `[src/db.rs](mdc:src/db.rs)`.
+
+- **Type Safety**: This prevents accidentally mixing up different kinds of IDs (e.g., passing a `UserId` where a `ChatId` is expected).
+- **Macros for Brevity**: The `make_db_newtype!` macro simplifies the creation of these types.
+- **`From` Traits**: `From` implementations allow for easy conversion between the `teloxide` types and the database newtypes.
+
+### Key-Value Store with `ConfigOptionDef`
+For storing simple key-value configuration in the database, the `[ConfigOptionDef<T>](mdc:src/db.rs)` struct provides a type-safe wrapper around the `options` table. It handles JSON serialization/deserialization automatically.
+
+The `config_option_def!` macro is used to define these options statically.
+
+## Calling External Tools
+
+Some commands work by executing external scripts or binaries and forwarding their output. For example, `[cmd_residents_admin_table](mdc:src/modules/basic.rs)` calls a Python script, and `[cmd_show_residents_timeline](mdc:src/modules/basic.rs)` calls `f0-residents-timeline` and `convert` (from ImageMagick) to generate and send a PNG image. This is a useful pattern for integrating with tools written in other languages.

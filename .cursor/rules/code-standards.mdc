@@ -1,0 +1,28 @@
+---
+alwaysApply: true
+---
+# Code Standards
+
+These standards apply to every change in the repository.
+
+## Formatting
+* All Rust code **must** be formatted with `cargo fmt` (run `just fmt`).
+* YAML / JSON / Markdown / TS / Nix are formatted by the same task (`just fmt`).
+
+## Linting
+* `cargo clippy --all-targets -- --deny warnings --cfg clippy` must pass. The project enables `clippy::pedantic` & `clippy::nursery` in `#![warn]` attributes, so new code should follow the same rigor.
+* The `deadnix`, `statix`, `ruff`, and `mypy` linters must also pass as enforced by `just check`.
+
+## Error Handling
+* Prefer `anyhow::Result<T>` for fallible functions and the `?` operator for propagation.
+* Attach context with `.context("...")` when the source of the error is not obvious.
+
+## Database Layer
+* Use the Diesel **newtype** wrappers (`DbUserId`, `DbChatId`, `DbThreadId`, etc.) when interacting with the database to maintain type-safety.
+
+## Modules
+* Every bot feature lives in its own file under `src/modules/` and exposes at least one of `command_handler`, `message_handler`, or `callback_handler`.
+* Command enums derive both `BotCommands` (from Teloxide) and the local `BotCommandsExt!` macro to declare access rules.
+
+## CI expectations
+Pull requests are expected to pass `just check` without warnings and be fully formatted.
