@@ -344,7 +344,7 @@ async fn handle_callback(
             let bot_username =
                 bot.get_me().await?.user.username.unwrap_or_default();
             let link =
-                format!("https://t.me/{bot_username}?start=temp_open:{token}");
+                format!("https://t.me/{bot_username}?start=temp_open{token}");
             let url = reqwest::Url::parse(&link).unwrap_or_else(|_| {
                 reqwest::Url::parse("https://t.me").unwrap()
             });
@@ -529,7 +529,7 @@ fn generate_token() -> String {
         .collect()
 }
 
-/// Handler for guest activation via /start `temp_open`:<token>
+/// Handler for guest activation via /start temp_open<token>
 pub fn guest_token_handler() -> crate::common::UpdateHandler {
     use std::sync::Arc;
 
@@ -540,7 +540,7 @@ pub fn guest_token_handler() -> crate::common::UpdateHandler {
 
     Update::filter_message().filter_map(|msg: Message| {
         let text = msg.text().unwrap_or("");
-        text.strip_prefix("/start temp_open:").map(|token| token.trim().to_string())
+        text.strip_prefix("/start temp_open")
     }).endpoint(|bot: Bot, env: Arc<BotEnv>, msg: Message, token: String| async move {
         handle_guest_token_activation(bot, env, msg, token).await
     })
