@@ -9,8 +9,8 @@ use rand::RngCore;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::*;
 use teloxide::types::{
-    CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode,
-    ThreadId, User,
+    CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, InputFile,
+    ParseMode, ThreadId, User,
 };
 use teloxide::utils::command::BotCommands;
 use tokio::sync::RwLock;
@@ -635,7 +635,13 @@ async fn handle_guest_token_activation(
 
     let response_text = "✅ Guest access activated! You can now use /open to temporarily open the door or click the button below. This action will be logged.\n\n🚪 Getting into the hackerspace:\n• External gray metal door: press \"38\" simultaneously on the keypad.\n• More info: https://f0rth.space/";
 
-    bot.reply_message(&msg, response_text).reply_markup(keyboard).await?;
+    let photo = InputFile::url(
+        reqwest::Url::parse("https://f0rth.space/img/entrance_1.jpg").unwrap(),
+    );
+    bot.reply_photo(&msg, photo)
+        .caption(response_text)
+        .reply_markup(keyboard)
+        .await?;
     log::info!(
         "Guest {} ({}) activated temp_open (inviter: {})",
         guest.full_name(),
