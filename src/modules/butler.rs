@@ -633,7 +633,7 @@ async fn handle_guest_token_activation(
             "butler:confirm_open",
         )]]);
 
-    let response_text = "✅ Guest access activated! You can now use /open to temporarily open the door or click the button below. This action will be logged.";
+    let response_text = "✅ Guest access activated! You can now use /open to temporarily open the door or click the button below. This action will be logged.\n\n🚪 Getting into the hackerspace:\n• External gray metal door: press \"38\" simultaneously on the keypad.\n• More info: https://f0rth.space/";
 
     bot.reply_message(&msg, response_text).reply_markup(keyboard).await?;
     log::info!(
