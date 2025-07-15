@@ -131,7 +131,7 @@ async fn handle_chat_member(
 
     let keyboard =
         InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-            "Stop residentship",
+            "Stop residency",
             format!("res_stop:{}", cm.new_chat_member.user.id),
         )]]);
 
