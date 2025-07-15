@@ -190,6 +190,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
             // should be the first handler
             .inspect(modules::tg_scraper::inspect_update)
             .inspect(modules::resident_tracker::inspect_update)
+            .branch(modules::resident_tracker::chat_member_handler())
             .branch(
                 Update::filter_message()
                     .filter(|msg: Message, env: Arc<common::BotEnv>| {
@@ -223,6 +224,7 @@ async fn run_bot(config_fpath: &OsStr) -> Result<()> {
                     .branch(modules::needs::callback_handler())
                     .branch(modules::polls::callback_handler())
                     .branch(modules::borrowed_items::callback_handler())
+                    .branch(modules::resident_tracker::callback_handler())
                     .branch(modules::butler::callback_handler())
                     .endpoint(drop_callback_query),
             )
