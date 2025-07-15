@@ -168,18 +168,10 @@ async fn cmd_temp_open(
                 user.full_name(),
                 user.id
             );
-            // Don't allow access if monitoring system is not initialized yet
-            bot.reply_message(&msg, "MAC monitoring system is initializing. Please try again in a few moments.").await?;
-            return Ok(());
+            // If monitoring isn’t ready yet, treat as offline.
+            false
         }
     };
-    if !is_online {
-        log::debug!("User {} ({}) blocked from temp_open: not on Wi-Fi. Active users: {:?}",
-            user.full_name(), user.id,
-            mac_monitoring_state.read().await.active_users().map(|set| set.len()));
-        bot.reply_message(&msg, "You must be connected to the hackerspace Wi-Fi to generate a temporary access link.").await?;
-        return Ok(());
-    }
 
     // Show duration selection buttons
     let keyboard = InlineKeyboardMarkup::new(vec![
@@ -193,7 +185,10 @@ async fn cmd_temp_open(
         ],
     ]);
 
-    let text = "🕒 Select duration for temporary guest access:";
+    let mut text = "🕒 Select duration for temporary guest access:".to_string();
+    if !is_online {
+        text.push_str("\n\n⚠️ You are not detected on the hackerspace Wi-Fi. The link will only work if you are at the space or have registered your device’s MAC address with /userctl --add-mac.");
+    }
 
     bot.reply_message(&msg, text).reply_markup(keyboard).await?;
 
@@ -291,34 +286,14 @@ async fn handle_callback(
                 return Ok(());
             }
 
-            // Check Wi-Fi presence (active MAC)
+            // Check Wi-Fi presence (active MAC) for warning purposes only.
             let is_online = {
                 let guard = mac_monitoring_state.read().await;
-                if let Some(set) = guard.active_users() {
-                    set.contains(&callback.from.id)
-                } else {
-                    log::info!(
-                        "MAC monitoring state not initialized for user {} ({})",
-                        callback.from.full_name(),
-                        callback.from.id
-                    );
-                    bot.answer_callback_query(&callback.id)
-                        .text("MAC monitoring system is initializing. Please try again in a few moments.")
-                        .show_alert(true)
-                        .await?;
-                    return Ok(());
-                }
+                guard
+                    .active_users()
+                    .map(|set| set.contains(&callback.from.id))
+                    .unwrap_or(false)
             };
-            if !is_online {
-                log::debug!("User {} ({}) blocked from temp_open callback: not on Wi-Fi. Active users: {:?}",
-                    callback.from.full_name(), callback.from.id,
-                    mac_monitoring_state.read().await.active_users().map(|set| set.len()));
-                bot.answer_callback_query(&callback.id)
-                    .text("You must be connected to the hackerspace Wi-Fi to generate a temporary access link.")
-                    .show_alert(true)
-                    .await?;
-                return Ok(());
-            }
 
             // Generate token and create link
             let token = generate_token();
@@ -350,7 +325,12 @@ async fn handle_callback(
             });
 
             // Update the message with the generated link
-            let text = format!("✅ Temporary guest access link (valid for {} min):\n<code>{}</code>", duration.num_minutes(), link);
+            let warning = if !is_online {
+                "\n\n⚠️ You are not detected on the hackerspace Wi-Fi. The link will only work if you are at the space or have registered your device’s MAC address with /userctl --add-mac."
+            } else {
+                ""
+            };
+            let text = format!("✅ Temporary guest access link (valid for {} min):\n<code>{}</code>{}", duration.num_minutes(), link, warning);
             let button = InlineKeyboardMarkup::new(vec![vec![
                 InlineKeyboardButton::url("Share link", url),
             ]]);
@@ -360,11 +340,18 @@ async fn handle_callback(
                 .reply_markup(button)
                 .await?;
 
-            bot.answer_callback_query(&callback.id)
-                .text(format!(
+            // Send callback acknowledgment, include warning if offline.
+            let ack_text = if !is_online {
+                format!("Link generated (valid for {} min). ⚠️ Not on hackerspace Wi-Fi.", duration.num_minutes())
+            } else {
+                format!(
                     "Temporary access link generated (valid for {} min)",
                     duration.num_minutes()
-                ))
+                )
+            };
+            bot.answer_callback_query(&callback.id)
+                .text(ack_text)
+                .show_alert(!is_online)
                 .await?;
 
             log::info!(
@@ -541,6 +528,7 @@ pub fn guest_token_handler() -> crate::common::UpdateHandler {
     Update::filter_message().filter_map(|msg: Message| {
         let text = msg.text().unwrap_or("");
         text.strip_prefix("/start temp_open")
+            .map(|token| token.trim_start_matches(':').trim().to_string())
     }).endpoint(|bot: Bot, env: Arc<BotEnv>, msg: Message, token: String| async move {
         handle_guest_token_activation(bot, env, msg, token).await
     })
