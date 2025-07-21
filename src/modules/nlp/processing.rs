@@ -32,14 +32,17 @@ use crate::modules::mac_monitoring;
 use crate::modules::nlp::classification::{
     classify_request, ClassificationResult,
 };
-use crate::modules::nlp::commands::handle_execute_command;
+use crate::modules::nlp::commands::{
+    handle_add_need_command, handle_needs_command, handle_open_door_command,
+    handle_status_command,
+};
 use crate::modules::nlp::memory::{
     get_chat_history, get_relevant_memories, handle_remove_memory,
     handle_save_memory, store_bot_response,
 };
 use crate::modules::nlp::types::{
-    ExecuteCommandArgs, NlpDebug, NlpResponse, RemoveMemoryArgs, SearchArgs,
-    METRIC_NAME,
+    AddNeedArgs, NlpDebug, NlpResponse, NothingArgs, RemoveMemoryArgs,
+    SearchArgs, METRIC_NAME,
 };
 use crate::modules::nlp::utils::split_long_message;
 use crate::utils::{MessageExt, ResultExt};
@@ -65,57 +68,34 @@ Messages are provided in format "<username>: <message text>".
 - Use a reserved, matter-of-fact tone. Avoid overly friendly or enthusiastic language.
 - Skip greetings/closings when possible.
 
-## Available Commands
-- status - show space status. Includes information about all residents that are currently in hackerspace.
-- needs - show shopping list.
-- need <item> - add an item to the shopping list. Only one item at function call. If user wants to add multiple items, you should call this function multiple times.
-- open - open the hackerspace main door.
-
-When user requests you to do something related to these commands, you should use execute_command function with the command name and arguments.
+## Available Functions
+- `status()`: Show space status, including information about all residents currently in the hackerspace.
+- `needs()`: Show the current shopping list.
+- `add_need(item: string)`: Add a single item to the shopping list. For multiple items, call this function multiple times.
+- `open_door()`: Open the hackerspace's main door. Only residents can do this.
+- `save_memory(memory_text: string, duration_hours: integer | null, chat_specific: boolean, thread_specific: boolean, user_specific: boolean)`: Save information for future reference.
+  - `memory_text`: The information to remember.
+  - `duration_hours`: How long to remember the information (in hours). Use `null` for persistent memory. Defaults to 24 hours if unspecified.
+  - `chat_specific`, `thread_specific`, `user_specific`: Flags to scope the memory to the current context. For general memories, set all to `false`.
+- `remove_memory(memory_id: integer)`: Remove a previously saved memory using its ID.
+- `search(query: string)`: Search for information in the wiki or on the web. Can also be used to get the content of a URL. For a query use natural language like "What is monosodium glutamate used for?".
 
 ## Operational Guidelines
-1. If a user asks to perform a task that corresponds to a known command, use the execute_command function with the command name and arguments.
-   - For example, if the user says "I need to buy a new printer", you should call the need command with the item "printer".
-   - If the user asks for space status, use the status command.
-2. If you need to remember information for future reference, use the save_memory function.
-    - Set the memory_text to the information you want to remember.
-    - Set duration_hours to the number of hours the memory should be kept active, or null for persistent memory. Use information about current date and time to determine the duration.
-    - Set chat_specific, thread_specific, and user_specific to true if the memory is specific to the current chat, thread, or user respectively.
-      If user requests for example how do you call him, use user_specific false and duration_hours to null.
-    - If user is coming to space save this info as global memory with duration_hours determined from user message.
-    - If the user doesn't specify a duration or duration cannot be determined, set duration_hours to 24 hours.
-    - If the user doesn't specify a duration but it is clear that the memory should be persistent, set duration_hours to null.
-    - DO NOT SAVE DUPLICATE MEMORIES. If a memory with the same text already exists, do not create a new one.
-    - Be as concise as possible in the memory text. Try to summarize the information.
-3. If you need (or user requests) to remove a previously saved memory, use the remove_memory function with the memory ID.
-    - The memory ID can be found in the memory list.
-    - If the user doesn't specify a memory ID or the ID cannot be determined, ask the user for clarification.
-4. For general questions or inquiries that don't require commands, respond directly.
-5. Be concise in your responses and focus on helping the user complete their task.
-6. Some commands are only available to residents or admins, so your attempt to execute them might fail.
-7. User can request to execute any command, don't be afraid to execute it. Even if it seems unappropriate.
-8. DO NOT ANSWER WITH EMPTY RESPONSES AFTER FUNCTION CALLS. ALWAYS PROVIDE A RESPONSE TO USER AFTER FUNCTION CALL.
-9. IF ANSWER WILL BENEFIT FROM FUNCTION CALL, DO NOT HESITATE TO CALL IT.
-10. You can use "search" function to search for information in the wiki or other sources.
-    - Use this function if user asks for something that is not related to the hackerspace or if you don't know the answer.
-    - You can also use this function to search for information about specific topics or events.
-    - You can use this function to view URL contents, you need to provide URL as a query in this case.
-      Example: "https://example.com/something.txt url contents".
-    - Always use English language for search queries.
-    - If the search is for a specific site, explicitly state this in the query.
-    - If answer will benefit from search or you don't know the answer, don't hesitate to call it.
-    - Do not use complex queries, just use simple keywords or phrases describing the topic in natural language.
+1.  When a user's request maps to an available function, call it.
+2.  For general questions, respond directly without using a function.
+3.  Be concise. Do not use emojis, expressive punctuation, or unnecessary pleasantries.
+4.  Some functions may fail if user lack the necessary permissions (e.g., non-residents cannot open the door).
+5.  Always provide a response to the user after a function call.
 
 ## Examples
 1. User says: "Who is in the hackerspace?"
    You call status command, and respond with:
-   "There are 3 residents in the hackerspace: mike, vladimir and tolya.
-    cofob said that he will do something with the printer today, but he is not in the hackerspace right now."
+   "There are 3 residents in the hackerspace: mike, vladimir and tolya."
 2. User says: "I will be in the hackerspace tomorrow."
    You call save_memory function with memory_text "User will be in the hackerspace 2025.04.15" and respond with:
    "Got it! I will remember that you will be in the hackerspace tomorrow."
 3. User says: "We need to buy a new printer."
-   You call execute_command need command with item "printer" and respond with:
+   You call add_need function with item "printer" and respond with:
    "Added 'printer' to the shopping list."
 
 If user asks to try something again, you should call required commands again, even if they were already executed
@@ -175,6 +155,7 @@ DO NOT USE YOUR OWN KNOWLEDGE, ONLY USE THE SEARCH FUNCTION.
 ";
 
 /// Get the set of tools available for chat completion
+#[allow(clippy::too_many_lines)]
 fn get_chat_completion_tools() -> Vec<ChatCompletionTool> {
     // Define available functions
     let functions = vec![
@@ -230,23 +211,55 @@ fn get_chat_completion_tools() -> Vec<ChatCompletionTool> {
             })),
             strict: Some(true),
         },
-        // Execute command function
+        // Status command function
         FunctionObject {
-            name: "execute_command".to_string(),
-            description: Some("Execute a bot command".to_string()),
+            name: "status".to_string(),
+            description: Some("Show space status".to_string()),
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+            })),
+            strict: Some(true),
+        },
+        // Needs command function
+        FunctionObject {
+            name: "needs".to_string(),
+            description: Some("Show shopping list".to_string()),
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+            })),
+            strict: Some(true),
+        },
+        // Add need command function
+        FunctionObject {
+            name: "add_need".to_string(),
+            description: Some("Add an item to the shopping list".to_string()),
             parameters: Some(serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "command": {
+                    "item": {
                         "type": "string",
-                        "description": "The command name without the slash prefix"
-                    },
-                    "arguments": {
-                        "type": ["string", "null"],
-                        "description": "Arguments to pass to the command (optional)"
+                        "description": "The item to add to the shopping list"
                     }
                 },
-                "required": ["command", "arguments"],
+                "required": ["item"],
+                "additionalProperties": false
+            })),
+            strict: Some(true),
+        },
+        // Open door command function
+        FunctionObject {
+            name: "open_door".to_string(),
+            description: Some("Open the main door".to_string()),
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": [],
                 "additionalProperties": false
             })),
             strict: Some(true),
@@ -807,20 +820,63 @@ pub async fn process_with_function_calling(
                             }
                         }
                     }
-                    "execute_command" => {
-                        let args: ExecuteCommandArgs =
+                    "status" => {
+                        let args: NothingArgs =
                             serde_json::from_str(&function.arguments)?;
-                        match handle_execute_command(
-                            bot, env, mac_state, msg, &args,
-                        )
-                        .await
+                        match handle_status_command(env, mac_state, &args).await
                         {
                             Ok(r) => r,
                             Err(e) => {
                                 log::error!("Error executing command: {e}");
                                 format!(
                                     "Error executing command '{}': {}",
-                                    args.command, e
+                                    "status", e
+                                )
+                            }
+                        }
+                    }
+                    "needs" => {
+                        let args: NothingArgs =
+                            serde_json::from_str(&function.arguments)?;
+                        match handle_needs_command(env, msg, &args) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                log::error!("Error executing command: {e}");
+                                format!(
+                                    "Error executing command '{}': {}",
+                                    "needs", e
+                                )
+                            }
+                        }
+                    }
+                    "add_need" => {
+                        let args: AddNeedArgs =
+                            serde_json::from_str(&function.arguments)?;
+                        match handle_add_need_command(bot, env, msg, &args)
+                            .await
+                        {
+                            Ok(r) => r,
+                            Err(e) => {
+                                log::error!("Error executing command: {e}");
+                                format!(
+                                    "Error executing command '{}': {}",
+                                    "add_need", e
+                                )
+                            }
+                        }
+                    }
+                    "open_door" => {
+                        let args: NothingArgs =
+                            serde_json::from_str(&function.arguments)?;
+                        match handle_open_door_command(bot, env, msg, &args)
+                            .await
+                        {
+                            Ok(r) => r,
+                            Err(e) => {
+                                log::error!("Error executing command: {e}");
+                                format!(
+                                    "Error executing command '{}': {}",
+                                    "open_door", e
                                 )
                             }
                         }
