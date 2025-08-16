@@ -5,6 +5,7 @@ use std::fmt::Debug;
 use diesel::prelude::*;
 use salvo_oapi::ToSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use teloxide::types::{ChatMember, MessageId, UserId};
 
 use crate::db::{
@@ -124,7 +125,45 @@ pub struct BorrowedItems {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BorrowedItem {
     pub name: String,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_datetime_backward_compatible"
+    )]
     pub returned: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+fn deserialize_option_datetime_backward_compatible<'de, D>(
+    deserializer: D,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = JsonValue::deserialize(deserializer)?;
+    match value {
+        JsonValue::Null => Ok(None),
+        JsonValue::Bool(b) => {
+            if b {
+                // Backward-compat: previously `returned` could be stored as `true`
+                // Use UNIX epoch as a neutral placeholder timestamp
+                let ts = chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0)
+                    .ok_or_else(|| serde::de::Error::custom("invalid epoch"))?;
+                Ok(Some(ts))
+            } else {
+                Ok(None)
+            }
+        }
+        JsonValue::String(s) => {
+            if s.trim().is_empty() {
+                return Ok(None);
+            }
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .map(|dt| Some(dt.with_timezone(&chrono::Utc)))
+                .map_err(serde::de::Error::custom)
+        }
+        other => Err(serde::de::Error::custom(format!(
+            "invalid type for returned: {other:?}"
+        ))),
+    }
 }
 
 #[derive(Clone, Debug, Insertable, Queryable, Selectable)]
