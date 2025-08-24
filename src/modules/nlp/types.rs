@@ -25,10 +25,11 @@ pub struct RemoveMemoryArgs {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ExecuteCommandArgs {
-    pub command: String,
-    #[serde(default)]
-    pub arguments: Option<String>,
+pub struct NothingArgs {}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AddNeedArgs {
+    pub item: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

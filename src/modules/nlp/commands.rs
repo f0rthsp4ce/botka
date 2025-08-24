@@ -18,7 +18,7 @@ use crate::db::DbChatId;
 use crate::models::ChatHistoryEntry;
 use crate::modules::basic::cmd_status_text;
 use crate::modules::needs::{add_items_text, command_needs_text};
-use crate::modules::nlp::types::ExecuteCommandArgs;
+use crate::modules::nlp::types::{AddNeedArgs, NothingArgs};
 use crate::modules::{butler, mac_monitoring};
 
 /// Commands for natural language processing
@@ -132,114 +132,108 @@ async fn handle_nlp_debug_info(
     Ok(())
 }
 
-/// Handle execution of commands through NLP
-pub async fn handle_execute_command(
-    bot: &Bot,
+/// Handle execution of the "status" command
+pub async fn handle_status_command(
     env: &Arc<BotEnv>,
     mac_state: &Arc<RwLock<mac_monitoring::State>>,
-    msg: &Message,
-    args: &ExecuteCommandArgs,
+    _args: &NothingArgs,
 ) -> Result<String> {
-    log::debug!("Executing command: {}", args.command);
+    log::debug!("Executing command: status");
 
-    let r = match args.command.as_str() {
-        "status" => {
-            // Handle status command
-            match cmd_status_text(env, mac_state).await {
-                Ok(text) => text,
-                Err(e) => {
-                    log::error!("Error executing status command: {e}");
-                    return Err(anyhow::anyhow!(
-                        "Error executing status command: {}",
-                        e
-                    ));
-                }
-            }
+    match cmd_status_text(env, mac_state).await {
+        Ok(text) => Ok(text),
+        Err(e) => {
+            log::error!("Error executing status command: {e}");
+            Err(anyhow::anyhow!("Error executing status command: {e}"))
         }
-        "needs" => {
-            // Check if user is a resident
-            if !is_resident(
-                &mut env.conn(),
-                &msg.from.clone().expect("empty from user"),
-            ) {
-                return Err(anyhow::anyhow!(
-                    "Non-resident users cannot use the needs command."
-                ));
-            }
+    }
+}
 
-            // Handle needs command
-            match command_needs_text(env) {
-                Ok(text) => text,
-                Err(e) => {
-                    log::error!("Error executing needs command: {e}");
-                    return Err(anyhow::anyhow!(
-                        "Error executing needs command: {}",
-                        e
-                    ));
-                }
-            }
-        }
-        "need" => {
-            // Check if user is a resident
-            if !is_resident(
-                &mut env.conn(),
-                &msg.from.clone().expect("empty from user"),
-            ) {
-                return Err(anyhow::anyhow!(
-                    "Non-resident users cannot add items to the shopping list."
-                ));
-            }
+/// Handle execution of the "needs" command
+pub fn handle_needs_command(
+    env: &Arc<BotEnv>,
+    msg: &Message,
+    _args: &NothingArgs,
+) -> Result<String> {
+    log::debug!("Executing command: needs");
 
-            // Handle need command
-            let item = args.arguments.clone().unwrap_or_default();
-            match add_items_text(
-                bot,
-                env,
-                &[&item],
-                &msg.from.clone().expect("empty from user"),
-            )
-            .await
-            {
-                Ok(text) => text,
-                Err(e) => {
-                    log::error!("Error executing need command: {e}");
-                    return Err(anyhow::anyhow!(
-                        "Error executing need command: {}",
-                        e
-                    ));
-                }
-            }
-        }
-        "open" => {
-            // Check if user is a resident
-            if !is_resident(
-                &mut env.conn(),
-                &msg.from.clone().expect("empty from user"),
-            ) {
-                return Err(anyhow::anyhow!(
-                    "Only residents can open the door."
-                ));
-            }
-            // Request door opening with confirmation
-            match butler::request_door_open_with_confirmation(
-               bot,
-               Arc::<BotEnv>::clone(env),
-               msg.chat.id,
-               msg.thread_id,
-               &msg.from.clone().expect("empty from user"),
-           ).await {
-              Ok(()) => "I've sent a confirmation request to open the door. Please confirm using the buttons.".to_string(),
-              Err(e) => {
-                log::error!("Error requesting door open: {e}");
-                return Err(anyhow::anyhow!("Failed to request door opening: {}", e));
-              }
-           }
-        }
-        _ => {
-            // Unknown command
-            return Err(anyhow::anyhow!("Unknown command: {}", args.command));
-        }
-    };
+    // Check if user is a resident
+    if !is_resident(&mut env.conn(), &msg.from.as_ref().unwrap().clone()) {
+        return Err(anyhow::anyhow!(
+            "Non-resident users cannot use the needs command."
+        ));
+    }
 
-    Ok(r)
+    // Handle needs command
+    match command_needs_text(env) {
+        Ok(text) => Ok(text),
+        Err(e) => {
+            log::error!("Error executing needs command: {e}");
+            Err(anyhow::anyhow!("Error executing needs command: {e}"))
+        }
+    }
+}
+
+/// Handle execution of the "need" command
+pub async fn handle_add_need_command(
+    bot: &Bot,
+    env: &Arc<BotEnv>,
+    msg: &Message,
+    args: &AddNeedArgs,
+) -> Result<String> {
+    log::debug!("Executing command: add_need");
+
+    // Check if user is a resident
+    if !is_resident(&mut env.conn(), &msg.from.as_ref().unwrap().clone()) {
+        return Err(anyhow::anyhow!(
+            "Non-resident users cannot add items to the shopping list."
+        ));
+    }
+
+    // Handle need command
+    match add_items_text(
+        bot,
+        env,
+        &[&args.item],
+        &msg.from.as_ref().unwrap().clone(),
+    )
+    .await
+    {
+        Ok(text) => Ok(text),
+        Err(e) => {
+            log::error!("Error executing need command: {e}");
+            Err(anyhow::anyhow!("Error executing need command: {e}"))
+        }
+    }
+}
+
+/// Handle execution of the "open" command
+pub async fn handle_open_door_command(
+    bot: &Bot,
+    env: &Arc<BotEnv>,
+    msg: &Message,
+    _args: &NothingArgs,
+) -> Result<String> {
+    log::debug!("Executing command: open");
+
+    // Check if user is a resident
+    if !is_resident(&mut env.conn(), &msg.from.as_ref().unwrap().clone()) {
+        return Err(anyhow::anyhow!("Only residents can open the door."));
+    }
+    // Request door opening with confirmation
+    match butler::request_door_open_with_confirmation(
+        bot,
+        Arc::<BotEnv>::clone(env),
+        msg.chat.id,
+        msg.thread_id,
+        &msg.from.as_ref().unwrap().clone(),
+    )
+    .await
+    {
+        Ok(()) => Ok("I've sent a confirmation request to open the door. Please confirm using the buttons.".to_string()),
+        Err(e) => {
+            log::error!("Error requesting door open: {e}");
+            Err(anyhow::anyhow!("Failed to request door opening: {}", e))
+        }
+    }
 }
