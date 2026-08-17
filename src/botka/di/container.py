@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from botka.config import Settings
 from botka.db.session import create_engine, create_sessionmaker
-from botka.services.bambu_service import BambuService
 from botka.services.borrowed_item_detector import BorrowedItemDetector
 from botka.services.borrowed_items_service import BorrowedItemsService
 from botka.services.fridge_client import FridgeClient
@@ -23,6 +22,7 @@ from botka.services.planka_mappings_service import PlankaCardMappingService
 from botka.services.planka_notification_service import PlankaNotificationService
 from botka.services.planka_todo_publisher import PlankaTodoPublisher
 from botka.services.polls_service import PollsService
+from botka.services.printer_service import PrinterService
 from botka.services.refinance_client import RefinanceClient
 from botka.services.shopping_list_service import (
     ShoppingBuyConfirmationTracker,
@@ -217,13 +217,11 @@ class AppProvider(Provider):
         return PlankaCommandService(planka, mappings, settings, tracker)
 
     @provide(scope=Scope.APP)
-    async def bambu_service(self, settings: Settings) -> AsyncIterable[BambuService]:
-        service = BambuService.from_settings(settings)
-        if service.is_configured:
-            await service.connect_all()
+    async def printer_service(self, settings: Settings) -> AsyncIterable[PrinterService]:
+        service = PrinterService.from_settings(settings)
+        await service.start()
         yield service
-        if service.is_configured:
-            await service.disconnect_all()
+        await service.close()
 
 
 def build_container(settings: Settings) -> AsyncContainer:

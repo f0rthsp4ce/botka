@@ -6,11 +6,11 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 def status_keyboard(printer_names: list[str]) -> InlineKeyboardMarkup:
     """Inline keyboard for the all-printers status message."""
     rows = [
-        [InlineKeyboardButton(text=f"📷 {name}", callback_data=f"bambu_cam:{name}")]
+        [InlineKeyboardButton(text=f"📷 {name}", callback_data=f"printer_cam:{name}")]
         for name in printer_names
     ]
     rows.append(
-        [InlineKeyboardButton(text="🔄 Refresh", callback_data="bambu_refresh")]
+        [InlineKeyboardButton(text="🔄 Refresh", callback_data="printer_refresh")]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -22,7 +22,7 @@ def camera_keyboard(name: str) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="🔄 Refresh",
-                    callback_data=f"bambu_cam_refresh:{name}",
+                    callback_data=f"printer_cam_refresh:{name}",
                 )
             ]
         ]

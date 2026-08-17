@@ -154,7 +154,7 @@ class BambuService:
         if printer is None:
             return None
         # All getters below read MQTT data cached by the library.  Waiting for
-        # an unreachable printer only ties up worker threads and makes /bambu
+        # an unreachable printer only ties up worker threads and makes /3d
         # appear to hang, so return an explicit offline status immediately.
         if not printer.mqtt_client_ready():
             return BambuPrinterStatus(

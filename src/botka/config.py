@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     bambu_printers: str | None = None
     bambu_camera_timeout_seconds: float = 10.0
 
+    # Klipper printer integration (Moonraker HTTP API)
+    # JSON list: [{"name":"Voron","base_url":"http://voron.local","api_key":"..."}]
+    klipper_printers: str | None = None
+    klipper_timeout_seconds: float = 10.0
+
     # Visit request link (shown to guests in the menu)
     visit_request_chat_id: str | None = None  # numeric ID or @username / plain username
     visit_request_topic_id: int | None = None
@@ -110,6 +115,15 @@ class Settings(BaseSettings):
             return []
         try:
             return json.loads(self.bambu_printers)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def get_klipper_printer_configs(self) -> list[dict]:
+        """Parse BOTKA_KLIPPER_PRINTERS JSON into printer config dicts."""
+        if not self.klipper_printers:
+            return []
+        try:
+            return json.loads(self.klipper_printers)
         except (json.JSONDecodeError, TypeError):
             return []
 

@@ -135,8 +135,8 @@ COMMANDS: tuple[CommandInfo, ...] = (
         "transactions", "show your last 10 transactions", "Finance (refinance)"
     ),
     CommandInfo(
-        "bambu",
-        "show Bambu Lab printer statuses and camera (residents/members)",
+        "3d",
+        "show 3D printer statuses and cameras (residents/members)",
         "Printers",
     ),
 )

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from botka.db.models import UserTier
-from botka.handlers.bambu.commands import _do_bambu
+from botka.handlers.bambu.commands import _do_printers
 from botka.handlers.mac_tracker.commands import status_handler
 from botka.handlers.shopping.commands import need_handler
 from botka.handlers.shopping.messages import topic_list_handler
@@ -89,30 +89,30 @@ async def test_status_rejects_guest_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bambu_rejects_guest_user() -> None:
+async def test_printers_reject_guest_user() -> None:
     message = SimpleNamespace(reply=AsyncMock())
-    bambu_service = SimpleNamespace(is_configured=True, get_all_statuses=AsyncMock())
+    printer_service = SimpleNamespace(is_configured=True, get_all_statuses=AsyncMock())
 
-    await _do_bambu(
+    await _do_printers(
         message,
-        bambu_service,
+        printer_service,
         user_record=SimpleNamespace(tier=UserTier.guest),
     )
 
     message.reply.assert_awaited_once_with(
         "Only residents and members can check printer status."
     )
-    bambu_service.get_all_statuses.assert_not_awaited()
+    printer_service.get_all_statuses.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_bambu_rejects_none_user() -> None:
+async def test_printers_reject_none_user() -> None:
     message = SimpleNamespace(reply=AsyncMock())
-    bambu_service = SimpleNamespace(is_configured=True, get_all_statuses=AsyncMock())
+    printer_service = SimpleNamespace(is_configured=True, get_all_statuses=AsyncMock())
 
-    await _do_bambu(message, bambu_service, user_record=None)
+    await _do_printers(message, printer_service, user_record=None)
 
     message.reply.assert_awaited_once_with(
         "Only residents and members can check printer status."
     )
-    bambu_service.get_all_statuses.assert_not_awaited()
+    printer_service.get_all_statuses.assert_not_awaited()

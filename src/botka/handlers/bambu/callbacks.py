@@ -11,7 +11,7 @@ from dishka.integrations.aiogram import FromDishka, inject
 
 from botka.db.models import User, UserTier
 from botka.handlers.bambu.utils import camera_keyboard, status_keyboard
-from botka.services.bambu_service import BambuService
+from botka.services.printer_service import PrinterService
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -21,23 +21,23 @@ def _updated_at() -> str:
     return f"Updated {datetime.now().strftime('%H:%M:%S')}"
 
 
-@router.callback_query(F.data == "bambu_refresh")
+@router.callback_query(F.data.in_({"printer_refresh", "bambu_refresh"}))
 @inject
-async def bambu_refresh_callback(
+async def printer_refresh_callback(
     callback: CallbackQuery,
-    bambu_service: FromDishka[BambuService],
+    printer_service: FromDishka[PrinterService],
     user_record: User | None = None,
 ) -> None:
     tier = user_record.tier if user_record else UserTier.guest
     if tier not in (UserTier.resident, UserTier.member):
         await callback.answer("Access denied.", show_alert=True)
         return
-    statuses = await bambu_service.get_all_statuses()
+    statuses = await printer_service.get_all_statuses()
     if not statuses:
         await callback.answer()
         return
     text = "\n\n".join(s.format_text() for s in statuses)
-    kb = status_keyboard(bambu_service.printer_names)
+    kb = status_keyboard(printer_service.printer_names)
     answer_text = _updated_at()
     if callback.message is not None:
         try:
@@ -50,10 +50,11 @@ async def bambu_refresh_callback(
 
 
 @router.callback_query(F.data.startswith("bambu_cam:"))
+@router.callback_query(F.data.startswith("printer_cam:"))
 @inject
-async def bambu_camera_callback(
+async def printer_camera_callback(
     callback: CallbackQuery,
-    bambu_service: FromDishka[BambuService],
+    printer_service: FromDishka[PrinterService],
     user_record: User | None = None,
 ) -> None:
     if callback.data is None:
@@ -69,8 +70,8 @@ async def bambu_camera_callback(
     name = callback.data.split(":", 1)[1]
     await callback.answer(f"Fetching photo from {name}…")
     photo, status = await asyncio.gather(
-        bambu_service.get_photo(name),
-        bambu_service.get_status(name),
+        printer_service.get_photo(name),
+        printer_service.get_status(name),
     )
     if photo is None:
         if callback.message is not None:
@@ -89,10 +90,11 @@ async def bambu_camera_callback(
 
 
 @router.callback_query(F.data.startswith("bambu_cam_refresh:"))
+@router.callback_query(F.data.startswith("printer_cam_refresh:"))
 @inject
-async def bambu_camera_refresh_callback(
+async def printer_camera_refresh_callback(
     callback: CallbackQuery,
-    bambu_service: FromDishka[BambuService],
+    printer_service: FromDishka[PrinterService],
     user_record: User | None = None,
 ) -> None:
     if callback.data is None:
@@ -104,8 +106,8 @@ async def bambu_camera_refresh_callback(
         return
     name = callback.data.split(":", 1)[1]
     photo, status = await asyncio.gather(
-        bambu_service.get_photo(name),
-        bambu_service.get_status(name),
+        printer_service.get_photo(name),
+        printer_service.get_status(name),
     )
     if photo is None:
         await callback.answer("Camera unavailable.", show_alert=True)

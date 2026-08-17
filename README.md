@@ -26,3 +26,17 @@ uv run botka
 ```
 docker compose up --build
 ```
+
+## 3D printers
+
+`/3d` shows status and camera buttons for configured Bambu Lab and Klipper
+printers. Bambu printers use `BOTKA_BAMBU_PRINTERS`. Klipper printers use the
+Moonraker API and are configured with `BOTKA_KLIPPER_PRINTERS`:
+
+```env
+BOTKA_KLIPPER_PRINTERS='[{"name":"Voron","base_url":"http://voron.local","api_key":"","camera_url":"/webcam/?action=snapshot"}]'
+```
+
+`api_key` and `camera_url` are optional. If `camera_url` is omitted, the bot
+uses the first enabled webcam reported by Moonraker's `/server/webcams/list`.
+Printer names must be unique across both integrations.
