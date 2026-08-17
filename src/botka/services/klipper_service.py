@@ -38,8 +38,8 @@ class KlipperPrinterStatus:
             "printing": "🖨️",
             "paused": "⏸️",
             "complete": "✅",
-            "error": "❌",
-            "cancelled": "❌",
+            "error": "⏹️",
+            "cancelled": "⏹️",
             "standby": "💤",
         }.get(self.state.lower(), "❓")
 

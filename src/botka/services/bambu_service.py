@@ -46,7 +46,7 @@ class BambuPrinterStatus:
             case GcodeState.FINISH:
                 return "✅"
             case GcodeState.FAILED:
-                return "❌"
+                return "⏹️"
             case GcodeState.IDLE:
                 return "💤"
             case _:
